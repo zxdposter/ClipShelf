@@ -20,6 +20,14 @@ Requires **macOS 14 or later** and a Mac with **Apple silicon (M1 or later)**. O
 
 This release has not been notarized by Apple. If macOS blocks opening it, review the download and allow it in **System Settings → Privacy & Security → Open Anyway**.
 
+### Install with Homebrew
+
+```sh
+brew install --cask zxdposter/tap/clipshelf
+```
+
+If Homebrew asks for explicit trust, run `brew trust --cask zxdposter/tap/clipshelf`, then repeat the installation command. If you already installed ClipShelf manually, quit it and move the existing app out of Applications before installing with Brew. Keep your clipboard history and settings in place.
+
 ![ClipShelf clipboard history with sample notes, travel ideas, and artwork](docs/images/clipboard-en.jpg)
 
 ## Your clipboard, within reach

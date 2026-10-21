@@ -20,6 +20,14 @@
 
 此版本尚未经过 Apple 公证。如果 macOS 阻止打开，请确认下载来源后，在 **系统设置 → 隐私与安全性 → 仍要打开** 中允许启动。
 
+### 通过 Homebrew 安装
+
+```sh
+brew install --cask zxdposter/tap/clipshelf
+```
+
+如果 Homebrew 提示需要信任，请先运行 `brew trust --cask zxdposter/tap/clipshelf`，再重新执行安装命令。如果之前已手动安装，请退出 ClipShelf，并将原应用移出「应用程序」后再通过 Brew 安装，无需删除剪贴板历史和设置。
+
 ![ClipShelf 剪贴板历史，展示示例笔记、旅行计划和图片](docs/images/clipboard-zh.jpg)
 
 ## 复制过的内容，随时找回
