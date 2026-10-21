@@ -1,0 +1,529 @@
+import AppKit
+import SwiftUI
+import ClipboardCore
+
+@MainActor
+final class ClipboardModel: ObservableObject {
+    @Published var history = History() { didSet { scheduleSearch(indexChanged: true) } }
+    @Published var query = "" { didSet { if query != oldValue { scheduleSearch() } } }
+    @Published private(set) var searchMatches = Set<UUID>()
+    @Published private(set) var searchPending = false
+    private let searchIndex: any ClipboardSearchIndex
+    private var indexTask: Task<Bool, Never>?
+    private var indexRevision = 0
+    private var readyRevision: Int?
+    private var searchTask: Task<Void, Never>?
+    private var searchRevision = 0
+    private(set) var searchError: String?
+
+    private func scheduleSearch(indexChanged: Bool = false) {
+        guard !locked else { return }
+        searchRevision += 1
+        let revision = searchRevision
+        searchTask?.cancel()
+        if indexChanged {
+            let snapshot = history.clips.map(SearchDocument.init)
+            indexRevision += 1
+            let target = indexRevision
+            let previous = indexTask
+            let index = searchIndex
+            indexTask = Task(priority: .utility) { [weak self] in
+                _ = await previous?.value
+                let success: Bool
+                do { try await index.synchronize(snapshot); success = true }
+                catch { success = false }
+                if let self, self.indexRevision == target { self.readyRevision = success ? target : nil }
+                return success
+            }
+        }
+        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            if searchPending { searchPending = false }
+            if !searchMatches.isEmpty { searchMatches = [] }
+            return
+        }
+        if !searchPending { searchPending = true }
+        if !searchMatches.isEmpty { searchMatches = [] }
+        let indexed = readyRevision == indexRevision
+        let index = searchIndex
+        let snapshot = history.clips.map(SearchDocument.init)
+        searchTask = Task(priority: .userInitiated) { [weak self] in
+            guard !Task.isCancelled else { return }
+            do {
+                let ids: Set<UUID>
+                var failure = indexed ? nil : "Spotlight index unavailable; background search used"
+                if indexed {
+                    do { ids = try await index.search(value) }
+                    catch {
+                        try Task.checkCancellation()
+                        failure = "Spotlight query failed; background search used: \(error.localizedDescription)"
+                        let fallback = MemorySearchIndex()
+                        await fallback.synchronize(snapshot)
+                        ids = try await fallback.search(value)
+                    }
+                } else {
+                    let fallback = MemorySearchIndex()
+                    await fallback.synchronize(snapshot)
+                    ids = try await fallback.search(value)
+                }
+                guard !Task.isCancelled, let self, self.searchRevision == revision else { return }
+                self.searchError = failure
+                self.searchMatches = ids
+                self.searchPending = false
+                self.resetSelection()
+            } catch {
+                guard !Task.isCancelled, let self, self.searchRevision == revision else { return }
+                self.searchError = error.localizedDescription
+                self.searchPending = false
+            }
+        }
+    }
+    func waitForSearch() async { await searchTask?.value }
+    func waitForIndex() async { _ = await indexTask?.value }
+    weak var searchField: NSTextField?
+    @Published var filter: ClipKind?
+    @Published var selectedBoardID: UUID?
+    @Published var dropTargetBoardID: UUID?
+    @Published var searchShown = false
+    @Published var presentationID = UUID()
+    @Published var editingBoardID: UUID?
+    @Published var namingDroppedBoard = false
+    @Published var dropTargetNewBoard = false
+    @Published var creatingBoard = false
+    @Published var boardNameDraft = L("未命名")
+    @Published var boardColorDraft = 1
+    private var pendingBoardClipIDs: [UUID] = []
+    @Published var paused = false
+    @Published var message: String?
+    @Published var selection = CardSelection()
+    @Published private(set) var selectionScrollID: UUID?
+    @Published var previewID: UUID?
+    func togglePreview() {
+        if previewID != nil { closePreview(); return }
+        guard let id = selectedID, selection.ids.contains(id), visible.contains(where: { $0.id == id }) else { return }
+        previewID = id
+    }
+    @Published var quickPasteHeld = false
+    func updateQuickPasteModifier(_ flags: NSEvent.ModifierFlags) {
+        let held = flags.contains(preferences.quickPasteModifier.flag)
+        if quickPasteHeld != held { quickPasteHeld = held }
+    }
+    func quickPasteNumber(at index: Int) -> Int? {
+        guard quickPasteHeld, (0..<9).contains(index), index < visible.count,
+              editingClipID == nil, renamingID == nil, !creatingBoard, editingBoardID == nil else { return nil }
+        return index + 1
+    }
+    func quickPasteClip(number: Int) -> Clip? {
+        guard (1...9).contains(number), number <= visible.count else { return nil }
+        return visible[number - 1]
+    }
+    var selectedID: UUID? { selection.focusedID }
+    var selectedClips: [Clip] { visible.filter { selection.ids.contains($0.id) } }
+    func resetSelection() {
+        if selectionScrollID != nil { selectionScrollID = nil }
+        closePreview()
+        var next = selection
+        next.reset(in: visible.map(\.id))
+        if selection != next { selection = next }
+    }
+    func selectClip(_ clip: Clip, modifiers: NSEvent.ModifierFlags = []) {
+        var next = selection
+        next.select(clip.id, in: visible.map(\.id), command: modifiers.contains(.command), shift: modifiers.contains(.shift))
+        if next != selection { selection = next }
+        if selectionScrollID != nil { selectionScrollID = nil }
+    }
+    func moveSelection(_ direction: Int, extending: Bool = false) {
+        var next = selection
+        next.move(direction, in: visible.map(\.id), extending: extending)
+        guard next != selection else { return }
+        selection = next
+        selectionScrollID = next.focusedID
+    }
+    func targets(for clip: Clip) -> [Clip] { selection.ids.contains(clip.id) ? selectedClips : [clip] }
+    func dragPayload(for clip: Clip) -> String { "clips:" + targets(for: clip).map { $0.id.uuidString }.joined(separator: ",") }
+    private var deletions: [History.Deletion] = []
+    @Published var renamingID: UUID?
+    @Published var renameDraft = ""
+    @Published var editingClipID: UUID?
+    @Published var editDraft = ""
+    @Published var imageDraft: Data?
+    @Published var imageOriginal: Data?
+    @Published var removingBackground = false
+    private var imageEditSession = UUID()
+    private var backgroundTask: Task<Void, Never>?
+    var pasteTargetName = "当前应用"
+    func beginRename(_ clip: Clip) { NSApp.activate(ignoringOtherApps: true); renameDraft = clip.title ?? clip.kind.label; renamingID = clip.id }
+    func finishRename() {
+        guard let id = renamingID else { return }
+        commit { try $0.rename(id: id, title: renameDraft) }
+        if !storageFailed { renamingID = nil }
+    }
+    func beginTextEdit(_ clip: Clip) { cancelTextEdit(); NSApp.activate(ignoringOtherApps: true); editDraft = clip.text; editingClipID = clip.id; previewID = clip.id }
+    func beginImageEdit(_ clip: Clip) {
+        guard let data = clip.items.flatMap({ $0 }).first(where: { ["public.png", "public.tiff"].contains($0.type) })?.data else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        guard let png = try? ImageEditing.normalizedPNG(data) else { message = "无法读取图片"; return }
+        cancelTextEdit()
+        imageDraft = png; imageOriginal = png; editingClipID = clip.id; previewID = clip.id
+    }
+    func rotateImage(clockwise: Bool) {
+        guard let data = imageDraft else { return }
+        do {
+            let rotated = try ImageEditing.rotate(data, clockwise: clockwise)
+            if let original = imageOriginal { imageOriginal = try ImageEditing.rotate(original, clockwise: clockwise) }
+            imageDraft = rotated
+        }
+        catch { message = error.localizedDescription }
+    }
+    @discardableResult
+    func removeImageBackground(processor: @escaping @Sendable (Data) throws -> Data = ImageEditing.removeBackground) -> Task<Void, Never>? {
+        guard let data = imageDraft, let id = editingClipID, !removingBackground else { return nil }
+        removingBackground = true
+        let session = imageEditSession
+        let task = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+            let result = await Task.detached { Result { try processor(data) } }.value
+            guard let self, !Task.isCancelled, self.editingClipID == id, self.imageEditSession == session else { return }
+            self.removingBackground = false
+            switch result {
+            case .success(let png): self.imageDraft = png
+            case .failure(let error): self.message = "无法移除背景：\(error.localizedDescription)"
+            }
+        }
+        backgroundTask = task
+        return task
+    }
+    func cancelTextEdit() {
+        guard editingClipID != nil || backgroundTask != nil || removingBackground || imageDraft != nil || imageOriginal != nil else { return }
+        imageEditSession = UUID()
+        backgroundTask?.cancel(); backgroundTask = nil
+        removingBackground = false
+        editingClipID = nil
+        imageDraft = nil; imageOriginal = nil
+    }
+    func closePreview() { cancelTextEdit(); if previewID != nil { previewID = nil } }
+    func finishTextEdit() {
+        guard let id = editingClipID, !removingBackground else { return }
+        if history.clips.first(where: { $0.id == id })?.kind == .image {
+            guard let data = imageDraft else { return }
+            commit { try $0.editImage(id: id, png: data) }
+        } else { commit { try $0.editText(id: id, text: editDraft) } }
+        if !storageFailed { cancelTextEdit() }
+    }
+    @Published var copiedID: UUID?
+    @Published var storageFailed = false
+    let preferences: Preferences
+    let demo: Bool
+    let storageURL: URL
+    private var timer: Timer?
+    private var lastChange = 0
+    private var pendingAt: Date?
+    private var locked = false
+    private let pasteboard: NSPasteboard
+    private let ignoredTypes = ["org.nspasteboard.TransientType", "org.nspasteboard.AutoGeneratedType",
+                                "org.nspasteboard.ConcealedType", "de.petermaurer.TransientPasteboardType"]
+    private var nextPrune = Date.distantPast
+    var onStackStarted: (() -> Void)?
+    @Published var stackPasteAvailable = false
+    @Published var stackMode = false
+    @Published var stackIDs: [UUID] = []
+    var stackClips: [Clip] { stackIDs.compactMap { id in history.clips.first { $0.id == id } } }
+
+    var visible: [Clip] {
+        let clips: [Clip]
+        if let board = history.boards.first(where: { $0.id == selectedBoardID }) {
+            let byID = Dictionary(uniqueKeysWithValues: history.clips.map { ($0.id, $0) })
+            clips = board.clipIDs.compactMap { byID[$0] }
+        } else { clips = history.clips }
+        let searching = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return clips.filter { (filter == nil || $0.kind == filter) && (!searching || searchMatches.contains($0.id)) }
+    }
+    func clearSearch() {
+        if let editor = searchField?.currentEditor() as? NSTextView {
+            editor.inputContext?.discardMarkedText()
+            editor.string = ""
+            editor.setSelectedRange(NSRange(location: 0, length: 0))
+        }
+        searchField?.stringValue = ""
+        query = ""
+    }
+    func selectBoard(_ id: UUID?) { selectedBoardID = id; resetSelection() }
+    func beginBoardEdit(_ board: Pinboard? = nil, clip: Clip? = nil) {
+        namingDroppedBoard = false
+        pendingBoardClipIDs = clip.map { targets(for: $0).map(\.id) } ?? []
+        searchShown = false
+        creatingBoard = board == nil; editingBoardID = board?.id
+        boardNameDraft = board?.name ?? L("未命名"); boardColorDraft = board?.color ?? (history.boards.count % 6)
+    }
+    func dropToNewBoard(_ strings: [String]) -> Bool {
+        defer { dropTargetNewBoard = false }
+        guard !locked else { return false }
+        let known = Set(history.clips.map(\.id))
+        var seen = Set<UUID>()
+        let ids = strings.flatMap { value -> [UUID] in
+            if value.hasPrefix("clips:") {
+                return value.dropFirst(6).split(separator: ",").prefix(History.maximumItems).compactMap { UUID(uuidString: String($0)) }
+            }
+            if value.hasPrefix("clip:"), let id = UUID(uuidString: String(value.dropFirst(5))) { return [id] }
+            return []
+        }.filter { known.contains($0) && seen.insert($0).inserted }
+        guard !ids.isEmpty else { return false }
+        beginBoardEdit()
+        pendingBoardClipIDs = Array(ids.prefix(History.maximumItems))
+        boardNameDraft = ""
+        namingDroppedBoard = true
+        return true
+    }
+    func cancelBoardEdit() { namingDroppedBoard = false; creatingBoard = false; editingBoardID = nil; pendingBoardClipIDs = [] }
+    func finishBoardEdit() {
+        let name = boardNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let id = editingBoardID { commit { try $0.editBoard(id: id, name: name, color: boardColorDraft) } }
+        else if creatingBoard {
+            var id: UUID?
+            commit { history in
+                id = try history.addBoard(name: name, color: boardColorDraft)
+                if let id { for clipID in pendingBoardClipIDs.reversed() { history.addToBoard(clipID: clipID, boardID: id) } }
+            }
+            if let id, history.boards.contains(where: { $0.id == id }) { selectBoard(id) }
+        }
+        if !storageFailed { cancelBoardEdit() }
+    }
+    func recolorBoard(_ board: Pinboard, color: Int) { commit { try $0.editBoard(id: board.id, name: board.name, color: color) } }
+    func removeBoard(_ board: Pinboard) {
+        commit { $0.removeBoard(id: board.id) }
+        if !storageFailed, selectedBoardID == board.id { selectBoard(nil) }
+    }
+    func add(_ clip: Clip, to board: Pinboard) {
+        let clips = targets(for: clip)
+        commit { history in for item in clips.reversed() { history.addToBoard(clipID: item.id, boardID: board.id) } }
+    }
+    func removeFromCurrentBoard(_ clip: Clip) {
+        if let selectedBoardID {
+            let clips = targets(for: clip)
+            commit { history in for item in clips { history.removeFromBoard(clipID: item.id, boardID: selectedBoardID) } }
+            resetSelection()
+        }
+    }
+    func drop(_ strings: [String], on board: Pinboard) -> Bool {
+        defer { dropTargetBoardID = nil }
+        guard !locked, history.boards.contains(where: { $0.id == board.id }) else { return false }
+        var changed = false
+        commit { history in
+            for string in strings {
+                if string.hasPrefix("clips:") {
+                    let ids = string.dropFirst(6).split(separator: ",").prefix(History.maximumItems).compactMap { UUID(uuidString: String($0)) }
+                    for id in ids.reversed() where history.clips.contains(where: { $0.id == id }) {
+                        history.addToBoard(clipID: id, boardID: board.id); changed = true
+                    }
+                } else if string.hasPrefix("clip:"), let id = UUID(uuidString: String(string.dropFirst(5))), history.clips.contains(where: { $0.id == id }) {
+                    history.addToBoard(clipID: id, boardID: board.id); changed = true
+                } else if string.hasPrefix("board:"), let id = UUID(uuidString: String(string.dropFirst(6))), history.boards.contains(where: { $0.id == id }) {
+                    history.moveBoard(id: id, before: board.id); changed = true
+                }
+            }
+        }
+        return changed && !storageFailed
+    }
+
+    init(demo: Bool = false, pasteboard: NSPasteboard = .general, storageURL: URL? = nil, preferences: Preferences? = nil, searchIndex: (any ClipboardSearchIndex)? = nil) {
+        self.searchIndex = searchIndex ?? (storageURL == nil && !demo ? SpotlightSearchIndex(manifestURL: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ClipShelf/search-index-v1.plist")) as any ClipboardSearchIndex : MemorySearchIndex())
+        self.preferences = preferences ?? Preferences()
+        self.demo = demo
+        self.pasteboard = pasteboard
+        self.storageURL = storageURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ClipShelf/history.plist")
+        if demo { seedDemo(); scheduleSearch(indexChanged: true); return }
+        do { history = try History.load(from: self.storageURL) }
+        catch { locked = true; storageFailed = true; message = error.localizedDescription }
+        scheduleSearch(indexChanged: true)
+        // Start with the current counter so opening the app doesn't import an old clipboard.
+        lastChange = pasteboard.changeCount
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.poll() }
+        }
+        self.timer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    func poll() {
+        if Date() >= nextPrune { pruneExpired(); nextPrune = Date().addingTimeInterval(60) }
+        let change = pasteboard.changeCount
+        if paused || locked { lastChange = change; pendingAt = nil; return }
+        if change != lastChange { lastChange = change; pendingAt = Date(); return }
+        guard let pendingAt, Date().timeIntervalSince(pendingAt) >= 0.3 else { return }
+        self.pendingAt = nil
+        capture(expectedChange: change)
+    }
+
+    func capture(expectedChange: Int, source: NSRunningApplication? = NSWorkspace.shared.frontmostApplication) {
+        let bundle = source?.bundleIdentifier ?? ""
+        guard !preferences.excludes(bundle), let rawItems = pasteboard.pasteboardItems, !rawItems.isEmpty else { return }
+        let allowed: Set<String> = [NSPasteboard.PasteboardType.string.rawValue, "public.utf16-plain-text",
+            "public.text", "public.url", "public.file-url", "public.png", "public.tiff", "public.rtf", "public.html"]
+        var total = 0
+        var items: [[Representation]] = []
+        for item in rawItems {
+            guard !item.types.contains(where: {
+                let confidential = $0.rawValue == "org.nspasteboard.ConcealedType"
+                return (confidential && preferences.ignoreConfidential) || (!confidential && preferences.ignoreTransient && ignoredTypes.contains($0.rawValue))
+            }) else { return }
+            var representations: [Representation] = []
+            for type in item.types where allowed.contains(type.rawValue) {
+                guard let data = item.data(forType: type) else { continue }
+                guard data.count <= History.maximumItemBytes - total else {
+                    message = "内容超过 5 MB，已跳过这次复制。"; return
+                }
+                total += data.count
+                representations.append(Representation(type: type.rawValue, data: data))
+            }
+            if !representations.isEmpty { items.append(representations) }
+        }
+        guard !items.isEmpty, pasteboard.changeCount == expectedChange else { return }
+        let flat = items.flatMap { $0 }
+        let files = flat.filter { $0.type == "public.file-url" }.compactMap { String(data: $0.data, encoding: .utf8) }
+        let kind: ClipKind
+        let text: String
+        let identity: Data
+        if !files.isEmpty {
+            kind = .files
+            text = files.compactMap { URL(string: $0)?.lastPathComponent }.joined(separator: "\n")
+            identity = (try? JSONEncoder().encode(files)) ?? Data(files.joined(separator: "\n").utf8)
+        } else if let image = flat.first(where: { $0.type == "public.png" || $0.type == "public.tiff" }) {
+            kind = .image; text = "图片"; identity = image.data
+        } else if let string = pasteboard.string(forType: .string), !string.isEmpty {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            let url = URL(string: trimmed)
+            kind = (url?.scheme == "http" || url?.scheme == "https") && !trimmed.contains(where: \.isWhitespace) ? .link : .text
+            text = string; identity = Data(string.utf8)
+        } else if let url = flat.first(where: { $0.type == "public.url" }), let value = String(data: url.data, encoding: .utf8) {
+            kind = .link; text = value; identity = url.data
+        } else { return }
+        guard preferences.captures(kind), pasteboard.changeCount == expectedChange else { return }
+        let clip = Clip(kind: kind, text: text, sourceName: source?.localizedName ?? "未知应用",
+                        sourceBundle: bundle, items: items, identity: identity)
+        commit { history in
+            try history.insert(clip)
+            try history.trim(to: self.preferences.historyLimit)
+            guard history.clips.contains(where: { $0.fingerprint == clip.fingerprint }) else { throw HistoryError.capacity }
+        }
+        if stackMode, !storageFailed, let id = history.clips.first(where: { $0.fingerprint == clip.fingerprint })?.id, !stackIDs.contains(id) { stackIDs.append(id) }
+    }
+
+    private func commit(_ change: (inout History) throws -> Void) {
+        guard !locked else { return }
+        do {
+            var next = history
+            try change(&next)
+            if !demo { try next.save(to: storageURL) }
+            history = next
+            if storageFailed { message = nil }
+            storageFailed = false
+        } catch { storageFailed = true; message = "未能保存历史：\(error.localizedDescription)" }
+    }
+
+    @discardableResult func copy(_ clip: Clip) -> Bool { copy([clip]) }
+    @discardableResult func copy(_ clips: [Clip], plainText: Bool = false) -> Bool {
+        guard !clips.isEmpty else { return false }
+        // Demo only previews controls and never touches the user's clipboard.
+        if demo { copiedID = clips.first?.id; return true }
+        let objects: [NSPasteboardItem]
+        if (plainText && clips.allSatisfy({ $0.kind != .image })) || (clips.count > 1 && clips.allSatisfy({ $0.kind == .text || $0.kind == .link })) {
+            let item = NSPasteboardItem()
+            item.setString(clips.map(\.text).joined(separator: "\n"), forType: .string)
+            objects = [item]
+        } else {
+            objects = clips.flatMap(\.items).map { representations in
+                let item = NSPasteboardItem()
+                for representation in representations { item.setData(representation.data, forType: .init(representation.type)) }
+                return item
+            }
+        }
+        pasteboard.clearContents()
+        guard pasteboard.writeObjects(objects) else { message = "未能写入剪贴板，请重试。"; return false }
+        lastChange = pasteboard.changeCount; pendingAt = nil
+        copiedID = clips.first?.id; message = nil
+        return true
+    }
+
+    func remove(_ clip: Clip) {
+        guard !locked else { return }
+        let clips = targets(for: clip)
+        let deletion = history.deletion(for: Set(clips.map(\.id)))
+        commit { history in for item in clips { history.remove(id: item.id) } }
+        guard !storageFailed else { return }
+        deletions.append(deletion)
+        while deletions.count > 20 || deletions.reduce(0, { $0 + $1.byteCount }) > History.maximumHistoryBytes { deletions.removeFirst() }
+        resetSelection()
+    }
+    func undoDeletion() {
+        guard !locked, let deletion = deletions.last else { return }
+        commit { try $0.restore(deletion) }
+        guard !storageFailed else { return }
+        deletions.removeLast()
+        resetSelection()
+    }
+    func setRetention(_ retention: RetentionPeriod) {
+        if let cutoff = retention.cutoff() { commit { $0.prune(before: cutoff) } }
+        if !storageFailed { preferences.retention = retention; resetSelection() }
+    }
+    func pruneExpired() {
+        guard !demo, !locked, let cutoff = preferences.retention.cutoff(),
+              history.clips.contains(where: { clip in clip.copiedAt < cutoff && !history.boards.contains(where: { $0.clipIDs.contains(clip.id) }) }) else { return }
+        commit { $0.prune(before: cutoff) }
+    }
+    func advanceBoard(_ direction: Int) {
+        let ids: [UUID?] = [nil] + history.boards.map { Optional($0.id) }
+        let index = ids.firstIndex(of: selectedBoardID) ?? 0
+        selectBoard(ids[(index + direction + ids.count) % ids.count])
+    }
+    func startStack(includeSelection: Bool = true) {
+        let clips = includeSelection ? selectedClips : []
+        stackMode = true
+        if stackIDs.isEmpty { stackIDs = clips.map(\.id) }
+        onStackStarted?()
+    }
+    @discardableResult func prepareStackPaste() -> Bool {
+        guard stackMode else { return false }
+        if !demo, pasteboard.changeCount != lastChange || pendingAt != nil {
+            capture(expectedChange: pasteboard.changeCount)
+        }
+        guard let clip = stackClips.first,
+              copy([clip], plainText: preferences.alwaysPlainText) else { return false }
+        stackIDs.removeAll { $0 == clip.id }
+        return true
+    }
+    func setHistoryLimit(_ limit: Int) {
+        guard [50, 100, 200].contains(limit) else { return }
+        commit { try $0.trim(to: limit) }
+        if !storageFailed { preferences.historyLimit = limit; resetSelection() }
+    }
+    func clearUnpinned() { commit { $0.removeUnpinned() }; resetSelection() }
+    func count(_ kind: ClipKind?) -> Int { history.clips.filter { kind == nil || $0.kind == kind }.count }
+
+    private func seedDemo() {
+        let samples: [(ClipKind, String, String)] = [
+            (.text, "好的想法，值得留下。\n\n把刚才复制的内容收进来，需要的时候再找回。", "备忘录"),
+            (.link, "https://developer.apple.com/design/human-interface-guidelines", "Safari"),
+            (.text, "会议记录\n\n✓ 历史记录与内容去重\n✓ 本地搜索\n✓ 卡片式预览\n\n下一步：把灵感变成作品。", "备忘录"),
+            (.text, "let ideas = clipboard.history\n    .filter { $0.isWorthKeeping }", "Xcode"),
+            (.files, "品牌素材.sketch\n界面参考.png\n项目说明.pdf", "访达"),
+            (.text, "Less, but better.\n\n少一点打断，多一点专注。", "Safari")
+        ]
+        if let iconURL = Bundle.main.url(forResource: "ClipShelf", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL), let tiff = icon.tiffRepresentation,
+           let bitmap = NSBitmapImageRep(data: tiff), let png = bitmap.representation(using: .png, properties: [:]) {
+            let image = Clip(kind: .image, text: "图片", sourceName: "ClipShelf", sourceBundle: "",
+                             items: [[Representation(type: "public.png", data: png)]], identity: png,
+                             copiedAt: Date().addingTimeInterval(-1800))
+            try? history.insert(image)
+        }
+        for (index, sample) in samples.enumerated().reversed() {
+            let data = Data(sample.1.utf8)
+            let clip = Clip(kind: sample.0, text: sample.1, sourceName: sample.2, sourceBundle: ["备忘录": "com.apple.Notes", "Safari": "com.apple.Safari", "Xcode": "com.apple.dt.Xcode", "访达": "com.apple.finder"][sample.2] ?? "",
+                            items: [[Representation(type: "public.utf8-plain-text", data: data)]], identity: data,
+                            copiedAt: Date().addingTimeInterval(Double(-index * 240)))
+            try? history.insert(clip)
+        }
+        if let link = history.clips.first(where: { $0.kind == .link }), let board = history.boards.first { history.addToBoard(clipID: link.id, boardID: board.id) }
+    }
+}
