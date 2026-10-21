@@ -72,6 +72,8 @@ Open **Settings → General → Appearance** and choose **Light**, **Dark**, or 
 
 Changes take effect immediately and your choice is remembered after restarting. Formatted text stays readable in dark mode while keeping its fonts and styling.
 
+![ClipShelf dark clipboard with sample content](docs/images/clipboard-dark-en.jpg)
+
 ## Keyboard shortcuts
 
 | Action | Shortcut |

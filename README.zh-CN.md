@@ -72,6 +72,8 @@ brew install --cask zxdposter/tap/clipshelf
 
 切换立即生效，重启后仍保留选择。格式文本在深色模式下保持可读，并保留字体与样式。
 
+![ClipShelf 夜间模式剪贴板，展示独立示例内容](docs/images/clipboard-dark-zh.jpg)
+
 ## 常用快捷键
 
 | 操作 | 快捷键 |
