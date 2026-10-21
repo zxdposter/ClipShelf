@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var hotKeys: [ShortcutAction: EventHotKeyRef] = [:]
     private var privacyObserver: AnyCancellable?
+    private var appearanceObserver: AnyCancellable?
     private var languageObserver: AnyCancellable?
     private var previousApplication: NSRunningApplication?
     private var eventHandler: EventHandlerRef?
@@ -42,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model = ClipboardModel(demo: CommandLine.arguments.contains("--demo"))
+        appearanceObserver = model.preferences.$appearance.sink { appearance in
+            NSApp.appearance = appearance.nativeAppearance
+        }
         model.onStackStarted = { [weak self] in self?.showStack() }
         installMainMenu()
         window = ShelfPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)

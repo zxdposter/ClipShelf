@@ -18,7 +18,15 @@ func formattedClipText(_ clip: Clip) -> AttributedString {
         let key = data as NSData
         if let cached = richTextCache.object(forKey: key) { return cached.value }
         guard let rich = NSAttributedString(rtf: data, documentAttributes: nil) else { return AttributedString(clip.text) }
-        let text = AttributedString(rich)
+        let readable = NSMutableAttributedString(attributedString: rich)
+        // Default black text needs to follow appearance; explicit colors and backgrounds stay intact.
+        rich.enumerateAttributes(in: NSRange(location: 0, length: rich.length)) { attributes, range, _ in
+            guard attributes[.backgroundColor] == nil,
+                  let color = (attributes[.foregroundColor] as? NSColor)?.usingColorSpace(.sRGB),
+                  color.redComponent < 0.05, color.greenComponent < 0.05, color.blueComponent < 0.05 else { return }
+            readable.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
+        }
+        let text = AttributedString(readable)
         richTextCache.setObject(FormattedText(text), forKey: key, cost: data.count * 4)
         return text
     }

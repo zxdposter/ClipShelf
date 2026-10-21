@@ -5,6 +5,7 @@ import ClipboardCore
 enum ShelfDesign {
     static let accent = Color(nsColor: adaptive(light: (0.22, 0.25, 0.30), dark: (0.78, 0.82, 0.88)))
     static let canvas = Color(nsColor: adaptive(light: (0.86, 0.88, 0.91), dark: (0.08, 0.09, 0.11)))
+    static let card = Color(nsColor: adaptive(light: (1, 1, 1), dark: (0.13, 0.145, 0.17)))
     static let paper = Color(nsColor: adaptive(light: (0.97, 0.975, 0.985), dark: (0.16, 0.18, 0.21)))
     static let line = Color(nsColor: adaptive(light: (0.68, 0.71, 0.76), dark: (0.33, 0.36, 0.41))).opacity(0.45)
     static let edge = Color(nsColor: adaptive(light: (1, 1, 1), dark: (0.68, 0.72, 0.78))).opacity(0.45)

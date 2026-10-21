@@ -108,12 +108,16 @@ struct PinboardTests {
         #expect(rendered.string == "Styled")
         let font = try #require(rendered.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
         #expect(font.pointSize == 22)
-        let differentlyStyled = NSAttributedString(string: "Styled", attributes: [.font: NSFont.systemFont(ofSize: 9)])
+        let differentlyStyled = NSAttributedString(string: "Styled", attributes: [.font: NSFont.systemFont(ofSize: 9), .foregroundColor: NSColor.black])
         let otherData = try differentlyStyled.data(from: NSRange(location: 0, length: differentlyStyled.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
         let other = Clip(kind: .text, text: "Styled", sourceName: "test", sourceBundle: "",
                          items: [[Representation(type: "public.rtf", data: otherData)]], identity: Data("Styled".utf8))
         let otherRendered = NSAttributedString(formattedClipText(other))
         #expect((otherRendered.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize == 9)
+        let adaptiveColor = try #require(otherRendered.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
+        NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance {
+            #expect((adaptiveColor.usingColorSpace(.sRGB)?.redComponent ?? 0) > 0.5)
+        }
         #expect(NSAttributedString(formattedClipText(rich)).isEqual(to: rendered))
         #expect(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
         #expect(rendered.attribute(.foregroundColor, at: 0, effectiveRange: nil) != nil)

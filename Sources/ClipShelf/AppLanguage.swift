@@ -19,6 +19,10 @@ final class AppLocalization: ObservableObject {
         language == .english ? english[key] ?? key : key
     }
     private static let english: [String: String] = [
+        "外观": "Appearance",
+        "跟随系统": "System",
+        "浅色": "Light",
+        "深色": "Dark",
         "允许“%@”读取剪贴板？": "Allow “%@” to read your clipboard?",
         "此 MCP 会话可读取本机历史记录与分组，包括可能的敏感内容。授权只对当前会话有效。客户端名称由对方提供，请仅批准自己启动的客户端。": "This MCP session can read local clipboard history and collections, including potentially sensitive content. Access lasts for this session only. The client supplies its own name; approve only clients you started.",
         "允许本次会话": "Allow This Session",

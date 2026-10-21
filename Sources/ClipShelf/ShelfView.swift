@@ -247,7 +247,7 @@ private struct ClipCard: View {
                 }
             }.padding(16).frame(width: 256, height: 268)
                 .background {
-                    RoundedRectangle(cornerRadius: 14).fill(Color.white)
+                    RoundedRectangle(cornerRadius: 14).fill(ShelfDesign.card)
                         .overlay(alignment: .bottom) {
                             UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14)
                                 .fill(Color(nsColor: appearance.color).opacity(0.26)).frame(height: 40)
@@ -288,7 +288,6 @@ private struct ClipCard: View {
             .accessibilityHint(L("单击选择，Command 点击切换选择，Shift 点击连续选择，双击或按回车复制并收起"))
             .accessibilityAddTraits(selected ? .isSelected : [])
             .contextMenu { cardMenu }
-            .environment(\.colorScheme, .light)
     }
     @ViewBuilder private var cardContent: some View {
         if clip.kind == .link, model.preferences.linkPreviews, let url = safeLinkURL(clip) {

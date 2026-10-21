@@ -16,20 +16,29 @@ struct PreferencesTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.historyLimit == 200 && preferences.captures(.text))
+        #expect(preferences.appearance == .system)
+        #expect(preferences.appearance.nativeAppearance == nil)
+        preferences.appearance = .dark
+        #expect(preferences.appearance.nativeAppearance?.name == .darkAqua)
         preferences.textEnabled = false
         preferences.imageEnabled = false
         preferences.historyLimit = 50
         preferences.shortcut = .optionCommandV
         preferences.excludedApps = " com.example.secret \ncom.example.mail\n"
         let restored = Preferences(defaults: defaults)
+        #expect(restored.appearance == .dark)
         #expect(!restored.captures(.text) && !restored.captures(.image))
         #expect(restored.captures(.link) && restored.captures(.files))
         #expect(restored.historyLimit == 50 && restored.shortcut == .optionCommandV)
         #expect(restored.excludes("com.example.secret") && restored.excludes("com.example.mail"))
         #expect(!restored.excludes("") && !restored.excludes("com.example.secret.extra"))
+        preferences.appearance = .light
+        #expect(Preferences(defaults: defaults).appearance.nativeAppearance?.name == .aqua)
+        defaults.set("invalid", forKey: "appAppearance")
         defaults.set(999_999, forKey: "historyLimit")
         defaults.set("invalid", forKey: "shortcut")
         let invalid = Preferences(defaults: defaults)
+        #expect(invalid.appearance == .system)
         #expect(invalid.historyLimit == 200 && invalid.shortcut == .shiftCommandV)
     }
     @Test @MainActor func disabledContentDoesNotEnterHistory() throws {

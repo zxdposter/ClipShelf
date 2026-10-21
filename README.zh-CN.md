@@ -14,7 +14,7 @@
 
 ## 下载
 
-[**下载 ClipShelf 0.9.0 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.0/ClipShelf-0.9.0-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.0/ClipShelf-0.9.0-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.0)
+[**下载 ClipShelf 0.9.1 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.1/ClipShelf-0.9.1-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.1/ClipShelf-0.9.1-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.1)
 
 需要 **macOS 14 或更新版本**，以及搭载 **Apple 芯片（M1 或更新）** 的 Mac。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。
 
@@ -55,6 +55,8 @@ brew install --cask zxdposter/tap/clipshelf
 - **多选操作**：多张卡片一起复制、粘贴、整理或删除。
 
 ## 按你的习惯使用
+
+在设置中选择 **浅色、深色或跟随系统**，应用会记住你的选择。
 
 支持 **中文** 和 **English**，可以自定义快捷键、历史保留时间，以及粘贴到当前应用还是仅复制到剪贴板。
 

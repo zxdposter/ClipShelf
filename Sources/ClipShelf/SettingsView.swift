@@ -147,6 +147,14 @@ struct SettingsView: View {
                     }.labelsHidden().pickerStyle(.menu).frame(width: 120)
                 }.padding(.vertical, 9)
                 Divider()
+                HStack {
+                    Text(L("外观")).font(.system(size: 13))
+                    Spacer()
+                    Picker(L("外观"), selection: $preferences.appearance) {
+                        ForEach(AppAppearance.allCases) { appearance in Text(appearance.title).tag(appearance) }
+                    }.labelsHidden().pickerStyle(.menu).frame(width: 120)
+                }.padding(.vertical, 9)
+                Divider()
                 toggle(L("登录时打开"), value: Binding(get: { state.loginEnabled }, set: state.setLogin)).disabled(state.loginBusy)
                 if SMAppService.mainApp.status == .requiresApproval { Button(L("前往系统设置批准")) { SMAppService.openSystemSettingsLoginItems() }.font(.system(size: 11)).padding(.bottom, 8) }
                 Divider()

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 import Carbon
 import ClipboardCore
 
@@ -14,6 +15,21 @@ enum RetentionPeriod: Int, CaseIterable, Identifiable {
         case .month: Calendar.current.date(byAdding: .month, value: -1, to: now)
         case .year: Calendar.current.date(byAdding: .year, value: -1, to: now)
         case .forever: nil
+        }
+    }
+}
+
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: Self { self }
+    var title: String {
+        switch self { case .system: L("跟随系统"); case .light: L("浅色"); case .dark: L("深色") }
+    }
+    var nativeAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
         }
     }
 }
@@ -39,6 +55,9 @@ enum ShelfShortcut: String, CaseIterable, Identifiable {
 @MainActor
 final class Preferences: ObservableObject {
     private let defaults: UserDefaults
+    @Published var appearance: AppAppearance {
+        didSet { defaults.set(appearance.rawValue, forKey: "appAppearance") }
+    }
     @Published var language: AppLanguage {
         didSet {
             defaults.set(language.rawValue, forKey: "appLanguage")
@@ -82,6 +101,7 @@ final class Preferences: ObservableObject {
     }
     init(defaults: UserDefaults = .standard, preferredLanguages: [String] = Locale.preferredLanguages) {
         self.defaults = defaults
+        appearance = AppAppearance(rawValue: defaults.string(forKey: "appAppearance") ?? "") ?? .system
         language = AppLanguage(rawValue: defaults.string(forKey: "appLanguage") ?? "")
             ?? AppLanguage.initial(preferredLanguages: preferredLanguages)
         textEnabled = defaults.object(forKey: "capture.text") as? Bool ?? true
