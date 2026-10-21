@@ -1,116 +1,84 @@
-# ClipShelf 0.9.0
+<div align="center">
 
-macOS 原生剪贴板工具，采用独立的桌面收纳视觉设计。SwiftUI / AppKit，无第三方依赖。支持 macOS 14+；本次构建为 Apple Silicon。**没有 iCloud、订阅、试用计时或付费锁定。**
+# ClipShelf
 
-## 开始使用
+**Keep what you copy. Find it when you need it.**
 
-打开 `ClipShelf.app` 后，会记录之后新复制的文本、链接、图片和文件，不导入启动前的旧剪贴板。面板收起后仍会采集。菜单栏“退出 ClipShelf”才会停止运行。
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-默认 `⇧⌘V` 展开或收起当前屏幕底部的面板；以你在设置中录制的组合键为准。如果某个组合已被其他应用占用，修改会失败并保留原设置，可以从菜单栏打开。面板采用约 0.12 秒短距离上浮与淡入过渡，系统“减少动态效果”启用时关闭动画。
+A clipboard manager for Mac, with searchable history, collections, and a card-based interface.
 
-`⌘,` 或面板右上角菜单“设置…”打开配置窗口。
+**No account required. No subscription.**
 
-## 卡片操作
+</div>
 
-- 单击：只选择该卡片；`⌘` 点击逐张增加或取消选择。
-- Shift 点击连续选择；`⌘Shift` 点击把该范围加入现有选择。
-- `⌘A` 全选当前分组、搜索和类型过滤后的卡片，包括屏幕外的卡片；输入框有焦点时只选中文字。
-- Tab / Shift+Tab 选择下一张 / 上一张；左右方向键移动选择，Shift + 左右扩展或缩小连续选择。
-- 双击或回车按通用设置的目标粘贴；`⌘C` 和右键“复制”仅写入剪贴板。
-- 快速粘贴默认 `⌘1…9`；按住纯文本模式修饰键（默认 Shift）可临时转换文本格式。
-- `⌘F`、搜索按钮或直接输入展开搜索。原生输入框支持组合输入，中文组词期间不筛选，确认后才查询。多个词需要全部匹配，搜索包含正文、标题和来源应用；筛选菜单可限定类型。
-- Esc 先退出搜索，再收起面板；点击外部也会收起。
+![ClipShelf clipboard history with sample notes, travel ideas, and artwork](docs/images/clipboard-en.jpg)
 
-单条复制保留格式。多张文本/链接按显示顺序以换行连接为纯文本。纯文本选项不把图片变成文字。多张图片或文件保留多个剪贴板 item，目标应用能否一次粘贴多个 item 取决于它自身。
+## Your clipboard, within reach
 
-## 收藏集与顺序粘贴
+Copy text, links, images, or files, then bring up ClipShelf to find them again. Browse clear, readable cards without leaving your current task behind.
 
-顶部 `+` 或 `⇧⌘N` 创建分组，回车保存名称，Esc 取消。右键可改名、换色和删除；拖动分组可以调整顺序。卡片可拖入分组，或通过右键添加。多选支持批量加入和移出分组。删除分组保留其历史卡片，删除记录会同时移除分组成员；卡片直接删除，按 `⌘Z` 可撤销（当前运行期间最多 20 次，受内存上限约束）。
+- **Clipboard history** — keep recent copies together instead of losing the previous one.
+- **No duplicate clutter** — copying the same content brings its existing card back to the front.
+- **Search and filter** — find a phrase, a saved title, or an app name; narrow results by content type.
+- **Keep the formatting** — see formatted text, images, and file thumbnails right on the cards.
+- **Preview with Space** — take a closer look at text, images, or files before pasting.
+- **Recognize the source** — app icons and colored card footers show where each item came from.
 
-“顺序粘贴”打开独立浮动队列，不呼出历史主界面。从主界面的入口开启时可加入选中卡片；后台快捷键开启时不加入隐藏界面的旧选择。之后新复制的不同内容继续入队。在目标应用按 ⌘V 使用队首并移出队列，支持反转顺序和单独移除。结束队列后恢复普通粘贴；空队列保留系统剪贴板行为。连续粘贴需要系统辅助功能授权（沿用设置页入口，不自动弹出授权）。队列按唯一历史 ID 管理，退出 App 后不保留。
+## Save your favorites in collections
 
-## 四栏配置
+Create collections for ideas, travel plans, reusable replies, or anything worth keeping. Give each collection a name and color, then drag cards into it.
 
-配置窗口以独立侧栏组织四页设置。
+Select several cards to organize them together. Drop cards onto **+ Collections** to create a collection as you go. Delete an unwanted card directly, and undo an accidental deletion with **⌘Z**.
 
-**通用**：中文 / English 界面语言、登录时打开、音效、粘贴到当前活动应用/剪贴板、始终以纯文本粘贴、按天/周/月/年/永久保留历史、删除未收藏历史。
+## Paste with fewer steps
 
-直接粘贴需要系统辅助功能权限。未授权时内容仍会复制，并显示权限说明；可以选择打开系统设置或稍后手动粘贴，授权由你确认。模拟粘贴前会检查目标应用仍在前台，避免把内容发给切换后的其他应用。选择“到剪贴板”可以不使用该权限。
+- **Quick Paste:** with the shelf open, press **⌘1–9** to paste a numbered card. Hold **⌘** to reveal the numbers.
+- **Sequential Paste:** collect several items, then press **⌘V** in your destination app to paste them one at a time. Reverse the order or remove an item from the queue whenever needed.
+- **Plain text:** paste without formatting when that is what you need.
+- **Multiple selections:** copy, paste, organize, or delete several cards together.
 
-历史期限从最近复制时间计算，保护 Pinboard 卡片。通过分段按钮选择保留期限；选择较短期限会清理过期的未收藏记录。容量上限仍然适用，“永久”仅关闭按时间过期。
+## Make it yours
 
-**智能**：启用本机 MCP，让 AI 客户端读取历史和分组。默认关闭。开启后点击“复制连接配置”，把 JSON 放入你的 MCP 客户端。每个会话的初始化都会显示人工批准窗口，名称由客户端提供，只批准自己启动的客户端。关闭再开启会使旧授权失效。提供 `search_items`、`get_item`、`list_pinboards` 三个只读工具，不导出二进制内容。采用 [MCP stdio 传输](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports)，没有 HTTP 监听端口。
+Choose **English** or **中文**, set your own shortcuts, and decide how long to keep your history. Pick whether a card pastes into your current app or simply returns to the clipboard.
 
-**隐私**：屏幕共享显示策略、生成链接预览、忽略机密/瞬时内容、带图标的忽略应用列表和加减按钮。
+The interface combines a frosted-glass shelf, white cards, and source-app colors. Open and dismiss it with a shortcut whenever you need it.
 
-链接预览默认关闭，开启后会通过系统 Link Presentation 访问目标网址，可能影响一次性或敏感链接。屏幕共享选项使用 macOS 窗口共享策略，现代屏幕录制工具是否遵循该策略由系统决定。关闭机密过滤或移除忽略应用会扩大采集范围；普通文本中的所有敏感信息无法自动识别。
+![ClipShelf settings with English selected and sample preferences](docs/images/settings-en.jpg)
 
-**键盘快捷键**：点击录制任意组合键，`×` 清除；支持唤醒、Stack、前后 Pinboard、快速粘贴修饰键、纯文本修饰键和恢复默认。全局组合需要包含 Command、Option 或 Control。录制时暂时停用现有全局组合，取消或离开录制会恢复。
+## Keyboard shortcuts
 
-## 数据与限制
+| Action | Shortcut |
+| --- | --- |
+| Show or hide ClipShelf | **⇧⌘V** |
+| Open Sequential Paste | **⇧⌘C** |
+| Search | **⌘F**, or start typing |
+| Select the next / previous card | **Tab / ⇧Tab**, or **→ / ←** |
+| Toggle a card in your selection | **⌘-click** |
+| Select a range | **⇧-click** |
+| Select all cards in the current view | **⌘A** |
+| Preview the selected card | **Space** |
+| Paste the selected card | **Return** or double-click |
+| Quick Paste | **⌘1–9** |
+| Copy without pasting | **⌘C** |
+| Undo a card deletion | **⌘Z** |
+| Create a collection | **⇧⌘N** |
+| Open settings | **⌘,** |
+| Close search or hide the shelf | **Esc** |
 
-历史与分组：`~/Library/Application Support/ClipShelf/history.plist`。二进制 plist **未加密**，文件仅当前用户读写；原子保存，旧版数组档案会迁移。损坏档案会停止采集并保留原文件，避免覆盖。
+Activation shortcuts and paste modifiers can be customized in Settings. Text fields keep their usual editing shortcuts.
 
-最多 200 条、单条累计 5 MB、总计 50 MB。优先淘汰未收藏的最旧记录；收藏占满容量时提示，保留现有收藏。最多 100 个分组，名称最多 80 字。
+## You choose what to keep
 
-SHA-256 去重：文本按原始 UTF-8，图片按编码字节，文件按有序 URL 列表。相同内容更新来源与时间、移到历史顶部，保留 ID 和分组关系。空格不自动删除。文件只保存引用，移动或删除原文件后可能失效。
+- Keep your clipboard history on your Mac, without cloud sync.
+- Pause collection whenever you want.
+- Exclude apps you do not want to save content from.
+- Skip marked confidential or temporary content.
+- Choose whether ClipShelf appears during screen sharing.
+- Allow AI tools to use saved clips only after you approve access.
 
-保存纯文本、URL、文件 URL、PNG/TIFF、RTF 和 HTML。只有 RTF/HTML 而无可提取文本的内容暂不录入。5 MB 包含一次复制的全部格式，大型截图可能跳过。没有 OCR；App 使用本机临时签名，未公证，更新后可能需要重新确认辅助功能权限。
+Direct pasting needs your permission in macOS settings. You can also copy a card and paste it yourself with **⌘V**.
 
-## 构建和测试
+---
 
-需要 Swift 6+ 的 Xcode 或 Command Line Tools。
-
-```sh
-swift test
-./build.sh
-```
-
-本机 CLT 27 的测试插件需要显式加载：
-
-```sh
-swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib
-```
-
-演示模式不读取或写入系统剪贴板，不保存样例历史；有明显的“演示 · 启用采集”按钮，可切换到真实模式：
-
-```sh
-/完整路径/ClipShelf.app/Contents/MacOS/ClipShelf --demo
-```
-
-请用绝对路径启动，避免 Launch Services 把相对路径进程当作另一个实例。常规使用直接打开 App 即可，不要带 `--demo`。
-
-## 空格预览
-
-选中卡片后按空格，在卡片上方展开预览；再次空格或 Esc 关闭，保留卡片栏。文本可滚动、选择，底部显示字符、单词及行数；图片等比显示，文件使用系统 Quick Look 预览首个仍存在的文件。多选时预览焦点卡片，未选择卡片时不打开。搜索框和分组编辑框内仍正常输入空格。预览不修改剪贴板、不访问链接。
-
-## 卡片右键菜单
-
-提供粘贴到目标应用、以纯文本粘贴、复制、编辑（文本/链接）、重命名、删除、固定到 Pinboard、预览和系统分享。文件额外提供默认应用打开与 Finder 定位，链接提供打开链接。复制保留卡片栏且不自动粘贴；多选批量复制、粘贴、删除、固定和分享，编辑与重命名作用于右键卡片。标题保存并参与搜索，重新复制同内容会保留标题；文本编辑保存为纯文本，内容相同时合并并保留分组关系。分享菜单由 macOS 按内容类型生成，实际分享由用户选择系统服务完成。
-
-## 图片编辑与菜单细节
-
-图片支持左转、右转、移除背景和恢复背景，先修改草稿，完成时保存为 PNG 并保留卡片身份、标题和分组。移除背景使用系统 Vision，识别失败会提示并保留原图。菜单显示回车、Shift 回车、Command-C/E/R、Delete 和空格快捷键；文字编辑框仍正常处理输入。固定菜单用对应 Pinboard 的颜色显示圆点，已固定项带白色勾号。搜索、分组和添加分组按钮有悬停背景。
-
-## 开发目录与数字提示
-
-在项目根目录开发，`./build.sh` 默认输出 `dist/ClipShelf.app`。按住快速粘贴修饰键（默认 Command）时，当前结果的前九张卡片右下角显示 1–9；松开隐藏，与快捷键使用同一结果顺序，搜索及分组切换后重新编号。分组名称和卡片编辑期间不显示提示。
-
-0.4.4/0.4.5 同时修复图片背景任务在关闭后继续回写的问题；处理期间禁用完成，失败保留草稿。分享验证按用户要求停止。
-
-## 独立视觉
-
-以中性石墨色、纯白卡片与来源 App 色带建立独立界面，主面板保留毛玻璃并遵循减少动态效果设置。卡片使用内容优先布局、来源标识和清晰的选择边框；搜索与收藏集位于同一行。设置页改为 820×650 的舒展分区，空状态和粘贴示意使用原创 SwiftUI Canvas 矢量插画。采集、存储格式、去重、搜索、分组、编辑、预览和快捷键保持兼容。
-
-
-## 0.7.0 搜索架构
-
-正常运行使用本机 Core Spotlight 索引，异步查询命中 ID，再按当前历史、收藏集或队列顺序显示；主界面不再逐条全文匹配。正文按每片 5,000 个字符、重叠 64 个字符建立索引，支持长文本尾部及跨片段多词搜索。卡片只布局前 1,200 个字符，完整内容仍可预览、复制和搜索。
-
-采集、编辑、重命名、删除和撤销后增量更新索引。`search-index-v1.plist` 仅保存摘要、分片 ID 和系统 client state，用来复用并校验索引；原 `history.plist` 格式和内容不变。系统要求重建或清单损坏时自动恢复。初次索引及系统服务不可用时使用后台匹配，输入线程不等待建索引；新查询取消旧任务，并拒绝过期结果。查询期间不新增提示或弹窗。
-
-超长单词（超过64字符）及超过32个词的查询使用后台完整匹配，避免分片边界或过多并行查询影响正确性。MCP 的独立只读接口保持原协议，不受界面异步状态影响。
-
-文件卡片使用系统 Quick Look 异步生成缩略图，并在内存中缓存最多 128 项、32 MB。文件修改时间、大小或屏幕缩放比例变化时使用新的缓存键；卡片离开视图会取消未完成请求。文件不存在或无法预览时显示文件图标。多文件卡片预览第一个可访问的文件。
-
-设置 → 通用提供中文和 English 两种界面语言。首次启动使用系统首选语言（中文变体均选择中文，其余不支持的语言回退英文），之后保存用户选择；切换无需重启。唤醒与收起动画为 0.12 秒，并遵循系统减少动态效果设置。
+*All screenshots show isolated sample content, never personal clipboard history.*
