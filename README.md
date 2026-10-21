@@ -56,13 +56,21 @@ Select several cards to organize them together. Drop cards onto **+ Collections*
 
 ## Make it yours
 
-Choose **Light**, **Dark**, or **System** appearance in Settings. Your choice is remembered.
-
 Choose **English** or **中文**, set your own shortcuts, and decide how long to keep your history. Pick whether a card pastes into your current app or simply returns to the clipboard.
 
-The interface combines a frosted-glass shelf, white cards, and source-app colors. Open and dismiss it with a shortcut whenever you need it.
+The interface combines a frosted-glass shelf, readable cards, and source-app colors. Open and dismiss it with a shortcut whenever you need it.
 
 ![ClipShelf settings with English selected and sample preferences](docs/images/settings-en.jpg)
+
+## Dark mode
+
+Open **Settings → General → Appearance** and choose **Light**, **Dark**, or **System**.
+
+- **Light:** bright panels and white cards.
+- **Dark:** dark cards, panels, and settings for a dimmer workspace, with source-app colors still visible.
+- **System:** follow your Mac’s current appearance, including automatic changes.
+
+Changes take effect immediately and your choice is remembered after restarting. Formatted text stays readable in dark mode while keeping its fonts and styling.
 
 ## Keyboard shortcuts
 
