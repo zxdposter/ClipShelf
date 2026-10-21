@@ -12,6 +12,14 @@
 
 </div>
 
+## 下载
+
+[**下载 ClipShelf 0.9.0 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.0/ClipShelf-0.9.0-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.0/ClipShelf-0.9.0-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.0)
+
+需要 **macOS 14 或更新版本**，以及搭载 **Apple 芯片（M1 或更新）** 的 Mac。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。
+
+此版本尚未经过 Apple 公证。如果 macOS 阻止打开，请确认下载来源后，在 **系统设置 → 隐私与安全性 → 仍要打开** 中允许启动。
+
 ![ClipShelf 剪贴板历史，展示示例笔记、旅行计划和图片](docs/images/clipboard-zh.jpg)
 
 ## 复制过的内容，随时找回
