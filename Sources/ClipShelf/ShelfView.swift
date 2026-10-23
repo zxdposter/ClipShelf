@@ -23,6 +23,11 @@ struct ShelfView: View {
         get { _sourceDetailsShown.wrappedValue }
         nonmutating set { _sourceDetailsShown.wrappedValue = newValue }
     }
+    private var _filtersShown = State(initialValue: false)
+    private var filtersShown: Bool {
+        get { _filtersShown.wrappedValue }
+        nonmutating set { _filtersShown.wrappedValue = newValue }
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var _pendingBoardDelete = State<Pinboard?>(initialValue: nil)
     private var pendingBoardDelete: Pinboard? {
@@ -132,6 +137,7 @@ struct ShelfView: View {
             .padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 2)
     }
     private func search(width: CGFloat) -> some View {
+        SearchInputRegion(input: model.searchInput) {
         HStack(spacing: 6) {
             Button {
                 if !model.searchShown { model.searchShown = true }
@@ -161,8 +167,7 @@ struct ShelfView: View {
                         .accessibilityLabel(L("已选 %@ 个来源应用", model.selectedSourceApps.count))
                         .help(model.selectedSourceApps.map(\.name).joined(separator: "\n"))
                         .popover(isPresented: _sourceDetailsShown.projectedValue, arrowEdge: .bottom) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(L("来源应用")).font(.headline)
+                            VStack(alignment: .leading, spacing: 12) {
                                 ScrollView {
                                     VStack(alignment: .leading, spacing: 4) {
                                         ForEach(model.selectedSourceApps) { app in
@@ -170,17 +175,21 @@ struct ShelfView: View {
                                                 model.toggleSourceApp(app)
                                                 if model.selectedSourceIDs.isEmpty { sourceDetailsShown = false }
                                             } label: {
-                                                HStack(spacing: 8) {
+                                                HStack(spacing: 10) {
                                                     sourceIcon(app)
-                                                    Text(app.name).lineLimit(1)
+                                                        .frame(width: 28, height: 28)
+                                                        .background(ShelfDesign.card.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+                                                    Text(app.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
                                                     Spacer()
-                                                    Image(systemName: "xmark").font(.system(size: 9))
-                                                }.padding(6).contentShape(Rectangle())
+                                                    Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(.tertiary)
+                                                }.padding(8).contentShape(RoundedRectangle(cornerRadius: 10))
+                                                    .background(ShelfDesign.card.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
                                             }.buttonStyle(ShelfHoverStyle()).accessibilityLabel(L("移除来源筛选：%@", app.name))
                                         }
                                     }
-                                }.frame(height: min(CGFloat(model.selectedSourceApps.count) * 32, 240))
-                            }.padding(12).frame(width: 240)
+                                }.scrollIndicators(.hidden).frame(height: min(max(CGFloat(model.selectedSourceApps.count) * 48 - 4, 0), 284))
+                            }.padding(14).frame(width: 260)
+                                .background(ShelfDesign.paper.opacity(0.85))
                         }
                 }.frame(width: sourceTokensWidth, alignment: .leading)
             }
@@ -196,26 +205,14 @@ struct ShelfView: View {
                 if model.searchActive {
                     Button { model.clearSearch() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.accessibilityLabel(L("清除搜索"))
                 }
-                Menu {
-                    Section(L("内容类型")) {
-                        Button(L("全部类型")) { model.filter = nil }
-                        ForEach(ClipKind.allCases, id: \.self) { kind in
-                            Toggle(kind.label, isOn: Binding(get: { model.filter == kind }, set: { model.filter = $0 ? kind : nil }))
-                        }
+                Button { filtersShown.toggle() } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .foregroundStyle(model.filter == nil && model.selectedSourceIDs.isEmpty ? Color.secondary : ShelfDesign.accent)
+                        .frame(width: 22, height: 22)
+                }.buttonStyle(ShelfHoverStyle()).accessibilityLabel(L("筛选"))
+                    .popover(isPresented: _filtersShown.projectedValue, arrowEdge: .bottom) {
+                        ShelfFilterPanel(model: model).id(localization.language)
                     }
-                    Section(L("来源应用")) {
-                        Button(L("全部应用")) { model.selectedSourceIDs = [] }
-                        ForEach(model.sourceApps) { app in
-                            Button { model.toggleSourceApp(app) } label: {
-                                Label { Text(app.name) } icon: {
-                                    if model.selectedSourceIDs.contains(app.id) { Image(systemName: "checkmark") }
-                                    else { sourceIcon(app) }
-                                }
-                            }
-                        }
-                    }
-                } label: { Image(systemName: "line.3.horizontal.decrease").foregroundStyle(model.filter == nil && model.selectedSourceIDs.isEmpty ? Color.secondary : ShelfDesign.accent) }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel(L("筛选")).id(localization.language)
             }
         }
         .padding(.horizontal, 8).frame(width: model.searchShown ? width : 200, height: 32)
@@ -226,24 +223,27 @@ struct ShelfView: View {
         .shadow(color: .black.opacity(0.035), radius: 3, y: 1)
         .overlay(alignment: .topLeading) {
             if model.searchShown && !model.suggestedSourceApps.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("来源应用")).font(.system(size: 10)).foregroundStyle(.secondary).padding(6)
+                VStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(model.suggestedSourceApps.enumerated()), id: \.element.id) { index, app in
                         Button { model.selectSourceSuggestion(app) } label: {
-                            HStack(spacing: 8) {
+                            HStack(spacing: 10) {
                                 sourceIcon(app)
-                                Text(app.name).font(.system(size: 12)).lineLimit(1)
+                                    .frame(width: 28, height: 28)
+                                    .background(ShelfDesign.card.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+                                Text(app.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
                                 Spacer()
-                                if model.sourceSuggestionIndex == index { Image(systemName: "return").font(.system(size: 10)) }
-                            }.padding(7).contentShape(Rectangle())
-                                .background(model.sourceSuggestionIndex == index ? ShelfDesign.accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                                Image(systemName: "return").font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.secondary).opacity(model.sourceSuggestionIndex == index ? 1 : 0)
+                            }.padding(8).contentShape(RoundedRectangle(cornerRadius: 10))
+                                .background(model.sourceSuggestionIndex == index ? ShelfDesign.accent.opacity(0.10) : ShelfDesign.card.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
                         }.buttonStyle(ShelfHoverStyle()).accessibilityLabel(L("筛选来源：%@", app.name))
                     }
-                }.padding(5).frame(width: width)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(ShelfDesign.line, lineWidth: 1))
-                    .shadow(color: .black.opacity(0.12), radius: 8, y: 3).offset(y: 38)
+                }.padding(8).frame(width: width)
+                    .background(ShelfDesign.paper.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    .shadow(color: .black.opacity(0.10), radius: 16, y: 7).offset(y: 40)
             }
+        }
         }
     }
     private func sourceIcon(_ app: SourceApplication) -> some View {
@@ -302,6 +302,65 @@ struct ShelfView: View {
                 Divider()
                 Button(L("删除分组…"), role: .destructive) { pendingBoardDelete = board }
             }
+    }
+}
+
+private struct ShelfFilterPanel: View {
+    @ObservedObject var model: ClipboardModel
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 4) {
+                typeButton(nil)
+                ForEach(ClipKind.allCases, id: \.self) { typeButton($0) }
+            }
+            ScrollView {
+                VStack(spacing: 4) {
+                    Button { model.selectedSourceIDs = [] } label: {
+                        HStack {
+                            Text(L("全部应用")).font(.system(size: 11, weight: .medium))
+                            Spacer()
+                            if model.selectedSourceIDs.isEmpty { Image(systemName: "checkmark").font(.system(size: 10, weight: .semibold)) }
+                        }.foregroundStyle(.secondary).padding(10).contentShape(RoundedRectangle(cornerRadius: 10))
+                    }.buttonStyle(ShelfHoverStyle())
+                    ForEach(model.sourceApps) { app in
+                        let selected = model.selectedSourceIDs.contains(app.id)
+                        Button { model.toggleSourceApp(app) } label: {
+                            HStack(spacing: 10) {
+                                Image(nsImage: SourceAppearance.forApp(app.bundle, fallback: "app").icon)
+                                    .resizable().frame(width: 18, height: 18).frame(width: 28, height: 28)
+                                    .background(ShelfDesign.card.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+                                Text(app.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                                Spacer(minLength: 8)
+                                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 14)).foregroundStyle(selected ? ShelfDesign.accent : Color.secondary.opacity(0.3))
+                            }.padding(8).contentShape(RoundedRectangle(cornerRadius: 10))
+                                .background(selected ? ShelfDesign.accent.opacity(0.09) : ShelfDesign.card.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+                        }.buttonStyle(ShelfHoverStyle()).help(app.name)
+                            .accessibilityAddTraits(selected ? .isSelected : [])
+                    }
+                }
+            }.scrollIndicators(.hidden).frame(height: min(CGFloat(model.sourceApps.count) * 48 + 36, 300))
+        }.padding(12).frame(width: 280).background(ShelfDesign.paper.opacity(0.85))
+    }
+    private func typeButton(_ kind: ClipKind?) -> some View {
+        let selected = model.filter == kind
+        return Button { model.filter = kind } label: {
+            VStack(spacing: 5) {
+                Image(systemName: kind?.symbol ?? "square.grid.2x2").font(.system(size: 13))
+                Text(kind?.label ?? L("全部类型")).font(.system(size: 10)).lineLimit(1)
+            }.frame(maxWidth: .infinity).frame(height: 46)
+                .foregroundStyle(selected ? ShelfDesign.accent : Color.secondary)
+                .background(selected ? ShelfDesign.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 10))
+        }.buttonStyle(ShelfHoverStyle()).accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+private struct SearchInputRegion<Content: View>: View {
+    @ObservedObject var input: SearchInput
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        let _ = input.text
+        content()
     }
 }
 

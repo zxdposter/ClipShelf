@@ -37,7 +37,7 @@ Copy text, links, images, or files, then bring up ClipShelf to find them again. 
 - **Clipboard history** — keep recent copies together instead of losing the previous one.
 - **No duplicate clutter** — copying the same content brings its existing card back to the front.
 - **Search and filter** — find content, saved titles, or app names; search Chinese with full pinyin or initials (for example, `zhongwen` or `zw` for 中文), and narrow results by content type.
-- **Filter by source app** — choose one or more apps from the filter menu or inline suggestions. Removable app tokens combine with keywords and content types; when they overflow, a count badge shows the full list on hover and individual removal on click. Use ↑↓ and Return to choose a suggestion; otherwise Return focuses results, a second Return pastes, and Tab switches between input and results.
+- **Filter by source app** — choose one or more apps from the filter menu or inline suggestions. Removable app tokens combine with keywords and content types; when they overflow, a count badge shows the full list on hover and individual removal on click. Use ↑↓ and Return to choose a suggestion; otherwise Return focuses results, a second Return pastes, and Tab / Shift-Tab selects the next / previous card.
 - **Keep the formatting** — see formatted text, images, and file thumbnails right on the cards.
 - **Preview with Space** — take a closer look at text, images, or files before pasting.
 - **Recognize the source** — app icons and colored card footers show where each item came from.

@@ -6,6 +6,27 @@ import ClipboardCore
 @testable import ClipShelf
 
 struct SearchInputTests {
+    @Test @MainActor func rapidTypingOnlyRefreshesSearchInputUntilResultsArrive() async {
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        let text = String(repeating: "long clipboard content ", count: 400)
+        model.history = History(clips: (0..<200).map { index in
+            Clip(kind: .text, text: "\(index) \(text)", sourceName: "Test", sourceBundle: "test", items: [], identity: Data("\(index)".utf8))
+        })
+        await model.waitForIndex()
+        model.query = "initial"
+        var shelfChanges = 0
+        var inputChanges = 0
+        let shelfObserver = model.objectWillChange.sink { shelfChanges += 1 }
+        let inputObserver = model.searchInput.objectWillChange.sink { inputChanges += 1 }
+        defer { shelfObserver.cancel(); inputObserver.cancel() }
+        for index in 0..<50 { model.query = "missing\(index)" }
+        #expect(inputChanges == 50)
+        #expect(shelfChanges == 0)
+        await model.waitForSearch()
+        #expect(model.query == "missing49")
+        #expect(model.visible.isEmpty)
+        #expect(shelfChanges > 0)
+    }
     @Test @MainActor func returnWaitsForResultsAndFocusesWithoutCopying() async throws {
         _ = NSApplication.shared
         let item = Clip(kind: .text, text: "target", sourceName: "Test", sourceBundle: "test", items: [], identity: Data())

@@ -3,9 +3,23 @@ import SwiftUI
 import ClipboardCore
 
 @MainActor
+final class SearchInput: ObservableObject {
+    @Published var text = ""
+}
+
+@MainActor
 final class ClipboardModel: ObservableObject {
     @Published var history = History() { didSet { refreshSourceApps(); scheduleSearch(indexChanged: true) } }
-    @Published var query = "" { didSet { if query != oldValue { if sourceSuggestionIndex != nil { sourceSuggestionIndex = nil }; scheduleSearch() } } }
+    let searchInput = SearchInput()
+    var query: String {
+        get { searchInput.text }
+        set {
+            guard newValue != searchInput.text else { return }
+            searchInput.text = newValue
+            if sourceSuggestionIndex != nil { sourceSuggestionIndex = nil }
+            scheduleSearch()
+        }
+    }
     @Published private(set) var searchMatches = Set<UUID>()
     @Published private(set) var searchPending = false
     @Published private(set) var hasSearchResults = false
