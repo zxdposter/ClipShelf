@@ -1,10 +1,39 @@
 import Foundation
 import AppKit
+import SwiftUI
 import Testing
 @testable import ClipboardCore
 @testable import ClipShelf
 
 struct CardMenuTests {
+    @Test @MainActor func sharingItemsAreResolvedOnlyAfterAnExplicitRequest() async throws {
+        var requested = false
+        var resolutions = 0
+        func content() -> ClipSharingPicker {
+            ClipSharingPicker(isPresented: Binding(get: { requested }, set: { requested = $0 }), items: {
+                resolutions += 1
+                return []
+            })
+        }
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 256, height: 268), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let host = NSHostingView(rootView: content())
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(resolutions == 0)
+        requested = true
+        host.rootView = content()
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(resolutions == 1)
+        #expect(!requested)
+        host.rootView = content()
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(resolutions == 1)
+    }
     private func text(_ value: String) -> Clip {
         Clip(kind: .text, text: value, sourceName: "Test", sourceBundle: "test",
              items: [[Representation(type: "public.utf8-plain-text", data: Data(value.utf8))]], identity: Data(value.utf8))

@@ -14,7 +14,7 @@ A clipboard manager for Mac, with searchable history, collections, and a card-ba
 
 ## Download
 
-[**Download ClipShelf 0.9.5 for Mac**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.5/ClipShelf-0.9.5-macOS-arm64.dmg) · [ZIP download](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.5/ClipShelf-0.9.5-macOS-arm64.zip) · [Release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.5)
+[**Download ClipShelf 0.9.6 for Mac**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.6/ClipShelf-0.9.6-macOS-arm64.dmg) · [ZIP download](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.6/ClipShelf-0.9.6-macOS-arm64.zip) · [Release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.6)
 
 Requires **macOS 14 or later** and a Mac with **Apple silicon (M1 or later)**. Open the DMG and drag ClipShelf into Applications.
 

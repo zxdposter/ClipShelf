@@ -466,9 +466,15 @@ private struct ClipCard: View {
     let copy: () -> Void
     let pastePlain: () -> Void
     let remove: () -> Void
+    private var _sharingShown = State(initialValue: false)
+    private var sharingShown: Bool {
+        get { _sharingShown.wrappedValue }
+        nonmutating set { _sharingShown.wrappedValue = newValue }
+    }
     var body: some View {
         ClipCardFace(state: ClipCardFaceState(clip: clip, quickPasteNumber: quickPasteNumber, selected: selected, model: model, language: language), model: model)
             .equatable()
+            .background(ClipSharingPicker(isPresented: _sharingShown.projectedValue, items: { sharingItems(model.targets(for: clip)) }))
             .contentShape(RoundedRectangle(cornerRadius: 16))
             // A Button consumes mouse tracking before the native drag source can start.
             .onDrag { NSItemProvider(object: model.dragPayload(for: clip) as NSString) } preview: {
@@ -520,12 +526,7 @@ private struct ClipCard: View {
                 if model.selectedBoardID != nil { Button(L("取消固定")) { model.removeFromCurrentBoard(clip) } }
                 Divider()
                 Button(L("预览")) { model.previewID = clip.id }.keyboardShortcut(.space, modifiers: [])
-                Menu(L("分享")) {
-                    let items = sharingItems(model.targets(for: clip))
-                    ForEach(Array(NSSharingService.sharingServices(forItems: items).enumerated()), id: \.offset) { _, service in
-                        Button(service.title) { service.perform(withItems: items) }
-                    }
-                }
+                Button(L("分享")) { sharingShown = true }
 
     }
 
