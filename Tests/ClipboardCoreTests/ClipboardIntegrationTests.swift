@@ -6,6 +6,36 @@ import ClipboardCore
 
 struct ClipboardIntegrationTests {
     @Test @MainActor
+    func copyingPromotesCardsAndPersistsTheirOrder() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let board = NSPasteboard(name: .init("ClipShelf-promote-\(UUID().uuidString)"))
+        defer { board.releaseGlobally(); try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("history.plist")
+        let model = ClipboardModel(pasteboard: board, storageURL: url, preferences: isolatedPreferences())
+        for text in ["第一项", "第二项", "第三项"] {
+            board.clearContents(); board.setString(text, forType: .string)
+            model.capture(expectedChange: board.changeCount, source: nil)
+        }
+        let first = try #require(model.history.clips.first(where: { $0.text == "第一项" }))
+        let second = try #require(model.history.clips.first(where: { $0.text == "第二项" }))
+        let boardID = try model.history.addBoard(name: "测试", color: 0)
+        model.history.addToBoard(clipID: first.id, boardID: boardID)
+        model.history.addToBoard(clipID: second.id, boardID: boardID)
+        #expect(model.copy(first))
+        #expect(model.visible.map(\.text) == ["第一项", "第三项", "第二项"])
+        #expect(model.history.clips.first?.id == first.id)
+        model.selectedBoardID = boardID
+        #expect(model.visible.map(\.id) == [first.id, second.id])
+        model.selectedBoardID = nil
+        #expect(model.copy([second, first], plainText: true))
+        #expect(model.visible.map(\.text) == ["第二项", "第一项", "第三项"])
+        #expect(board.string(forType: .string) == "第二项\n第一项")
+        model.poll()
+        #expect(model.history.clips.count == 3)
+        #expect(try History.load(from: url).clips == model.history.clips)
+    }
+
+    @Test @MainActor
     func stackWritesNextItemAndDoesNotRecaptureItsOwnPaste() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let board = NSPasteboard(name: .init("ClipShelf-stack-\(UUID().uuidString)"))

@@ -442,6 +442,17 @@ final class ClipboardModel: ObservableObject {
         guard pasteboard.writeObjects(objects) else { message = "未能写入剪贴板，请重试。"; return false }
         lastChange = pasteboard.changeCount; pendingAt = nil
         copiedID = clips.first?.id; message = nil
+        commit { history in
+            for clip in clips.reversed() {
+                guard var current = history.clips.first(where: { $0.id == clip.id }) else { continue }
+                current.copiedAt = Date()
+                try history.insert(current)
+                for board in history.boards where board.clipIDs.contains(current.id) {
+                    history.removeFromBoard(clipID: current.id, boardID: board.id)
+                    history.addToBoard(clipID: current.id, boardID: board.id)
+                }
+            }
+        }
         return true
     }
 
