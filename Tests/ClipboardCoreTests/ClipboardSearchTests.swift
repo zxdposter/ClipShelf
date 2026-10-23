@@ -54,6 +54,79 @@ struct ClipboardSearchTests {
         await model.waitForSearch()
         #expect(model.visible.map(\.id) == [punctuation.id])
     }
+    @Test @MainActor func sourceFiltersUseAppIdentityAndCombineWithTextTypeAndPinboards() async throws {
+        let first = Clip(kind: .text, text: "invoice one", sourceName: "Browser", sourceBundle: "app.one", items: [], identity: Data("one".utf8))
+        let second = Clip(kind: .text, text: "invoice two", sourceName: "Browser", sourceBundle: "app.two", items: [], identity: Data("two".utf8))
+        let link = Clip(kind: .link, text: "https://example.com/invoice", sourceName: "Browser", sourceBundle: "app.one", items: [], identity: Data("link".utf8))
+        let other = clip("not an invoice")
+        let index = DelayedIndex(old: first.id, new: second.id)
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), searchIndex: index)
+        model.history = History(clips: [first, second, link, other])
+        await model.waitForIndex()
+        #expect(model.sourceApps.count == 3)
+        let app = try #require(model.sourceApps.first { $0.bundle == "app.one" })
+        let another = try #require(model.sourceApps.first { $0.bundle == "app.two" })
+        model.toggleSourceApp(app)
+        #expect(model.visible.map(\.id) == [first.id, link.id])
+        model.toggleSourceApp(another)
+        #expect(model.visible.map(\.id) == [first.id, second.id, link.id])
+        #expect(await index.queries.isEmpty)
+        model.filter = .link
+        #expect(model.visible.map(\.id) == [link.id])
+        let board = try model.history.addBoard(name: "Work", color: 0)
+        model.history.addToBoard(clipID: second.id, boardID: board)
+        model.history.addToBoard(clipID: link.id, boardID: board)
+        model.selectBoard(board)
+        #expect(model.visible.map(\.id) == [link.id])
+        model.filter = nil
+        await model.waitForIndex()
+        model.query = "invoice two"
+        await model.waitForSearch()
+        #expect(model.visible.map(\.id) == [second.id])
+        model.clearSearch()
+        #expect(model.selectedSourceIDs.isEmpty)
+        #expect(model.filter == nil)
+        #expect(model.visible.map(\.id) == [link.id, second.id])
+        model.selectedSourceIDs = ["bundle:missing"]
+        #expect(model.visible.isEmpty)
+    }
+    @Test @MainActor func sourceSuggestionsConsumeOnlyAppTextAndKeepOtherTerms() throws {
+        let chrome = Clip(kind: .text, text: "sample", sourceName: "Google Chrome", sourceBundle: "com.google.Chrome", items: [], identity: Data())
+        let wechat = Clip(kind: .text, text: "消息", sourceName: "微信", sourceBundle: "com.tencent.xinWeChat", items: [], identity: Data())
+        let fallback = Clip(kind: .text, text: "sample", sourceName: "Legacy App", sourceBundle: "", items: [], identity: Data())
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        model.history = History(clips: [chrome, wechat, fallback])
+        model.searchFocused = true
+        model.query = "invoice Google Chrome"
+        let app = try #require(model.suggestedSourceApps.first)
+        model.selectSourceSuggestion(app)
+        #expect(model.query == "invoice")
+        #expect(model.selectedSourceApps.map(\.bundle) == ["com.google.Chrome"])
+        model.query = "weixin"
+        #expect(model.suggestedSourceApps.map(\.name) == ["微信"])
+        #expect(model.moveSourceSuggestion(1))
+        model.submitSearch()
+        #expect(model.query.isEmpty)
+        #expect(model.selectedSourceIDs.count == 2)
+        model.query = "Legacy"
+        #expect(model.suggestedSourceApps.map(\.id) == ["name:Legacy App"])
+        model.searchFocused = false
+        #expect(model.suggestedSourceApps.isEmpty)
+        model.history = History(clips: [fallback])
+        #expect(model.selectedSourceIDs.count == 2)
+        #expect(model.visible.isEmpty)
+        model.clearSearch()
+        #expect(model.selectedSourceIDs.isEmpty)
+        #expect(model.sourceApps.map(\.id) == ["name:Legacy App"])
+    }
+    @Test func normalizedSearchPreservesAccentsWidthAndLiteralPunctuation() async throws {
+        let item = clip("Café ＡＢＣ ﬁle Straße /tmp/a_b.swift?value=*")
+        let index = MemorySearchIndex()
+        try await index.synchronize([SearchDocument(item)])
+        for query in ["cafe", "abc", "file", "STRASSE", "/tmp/a_b.swift?value=*"] {
+            #expect(try await index.search(query) == [item.id], "query: \(query)")
+        }
+    }
     @Test @MainActor func searchRemainsAvailableWhileTheFirstIndexIsBuilding() async throws {
         let index = BuildingIndex()
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), searchIndex: index)
@@ -107,6 +180,9 @@ struct ClipboardSearchTests {
         await model.waitForSearch()
         #expect(await index.queries == ["new"])
         #expect(model.visible.map(\.id) == [second.id])
+        model.query = "new "
+        await model.waitForSearch()
+        #expect(await index.queries == ["new"])
         model.query = "old"
         await index.waitForOld()
         #expect(model.searchPending)

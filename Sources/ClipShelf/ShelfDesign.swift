@@ -32,8 +32,8 @@ struct ShelfGlassBackground: View {
             if reduceTransparency { ShelfDesign.canvas }
             else {
                 ShelfVisualEffect()
-                ShelfDesign.canvas.opacity(0.22)
-                LinearGradient(colors: [.white.opacity(0.12), .clear, .black.opacity(0.10)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                ShelfDesign.canvas.opacity(0.16)
+                LinearGradient(colors: [.white.opacity(0.16), .clear, .black.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing)
             }
         }.allowsHitTesting(false).accessibilityHidden(true)
     }

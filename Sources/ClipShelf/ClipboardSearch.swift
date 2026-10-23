@@ -4,6 +4,39 @@ import CryptoKit
 import UniformTypeIdentifiers
 import ClipboardCore
 
+func foldedSearchText(_ value: String) -> String {
+    value.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        .precomposedStringWithCanonicalMapping
+}
+
+func pinyinSearchTerms(_ value: String) -> [String] {
+    guard value.range(of: "\\p{Han}", options: .regularExpression) != nil,
+          let latin = value.applyingTransform(.mandarinToLatin, reverse: false) else { return [] }
+    // shortcut: use the system reading; add heteronyms if alternate pronunciations are needed.
+    let syllables = latin.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "zh_CN"))
+        .split(whereSeparator: \.isWhitespace)
+    return [syllables.joined(), String(syllables.compactMap(\.first))]
+}
+
+struct SourceApplication: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let bundle: String
+    private let pinyin: [String]
+    init(_ clip: Clip) {
+        id = Self.id(for: clip)
+        name = clip.sourceName.isEmpty ? L("未知应用") : clip.sourceName
+        bundle = clip.sourceBundle
+        pinyin = pinyinSearchTerms(name)
+    }
+    static func id(for clip: Clip) -> String {
+        clip.sourceBundle.isEmpty ? "name:\(clip.sourceName)" : "bundle:\(clip.sourceBundle)"
+    }
+    func matches(_ term: String) -> Bool {
+        name.localizedStandardContains(term) || pinyin.contains { $0.localizedStandardContains(term) }
+    }
+}
+
 struct SearchDocument: Equatable, Codable, Sendable {
     let id: UUID
     let text: String
@@ -23,21 +56,16 @@ protocol ClipboardSearchIndex: Actor {
 actor MemorySearchIndex: ClipboardSearchIndex {
     private struct IndexedDocument {
         let document: SearchDocument
-        let pinyin: [String]
+        // Normalize once, then use native literal matching instead of repeating locale/grapheme work per query.
+        let fields: [NSString]
         init(_ document: SearchDocument) {
             self.document = document
-            // shortcut: use the system reading; add heteronyms if alternate pronunciations are needed.
-            pinyin = [document.text, document.title, document.source].flatMap { value -> [String] in
-                guard value.range(of: "\\p{Han}", options: .regularExpression) != nil,
-                      let latin = value.applyingTransform(.mandarinToLatin, reverse: false) else { return [] }
-                let syllables = latin.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "zh_CN"))
-                    .split(whereSeparator: \.isWhitespace)
-                return [syllables.joined(), String(syllables.compactMap(\.first))]
-            }
+            let values = [document.text, document.title, document.source]
+            fields = (values.map(foldedSearchText) + values.flatMap(pinyinSearchTerms)).map { $0 as NSString }
         }
         func matches(_ terms: [String]) -> Bool {
             terms.allSatisfy { term in
-                document.matches([term]) || pinyin.contains { $0.localizedStandardContains(term) }
+                fields.contains { $0.range(of: term, options: .literal).location != NSNotFound }
             }
         }
     }
@@ -52,7 +80,7 @@ actor MemorySearchIndex: ClipboardSearchIndex {
         documents = next
     }
     func search(_ query: String) throws -> Set<UUID> {
-        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        let terms = foldedSearchText(query).split(whereSeparator: \.isWhitespace).map(String.init)
         var ids = Set<UUID>()
         for entry in documents.values {
             try Task.checkCancellation()

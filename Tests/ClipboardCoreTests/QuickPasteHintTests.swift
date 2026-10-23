@@ -8,6 +8,7 @@ struct QuickPasteHintTests {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         #expect(model.quickPasteNumber(at: 0) == nil)
         model.updateQuickPasteModifier(.command)
+        #expect(model.commandHeld)
         #expect(model.quickPasteNumber(at: 0) == 1)
         #expect(model.quickPasteClip(number: 1)?.id == model.visible.first?.id)
         model.query = "会议"
@@ -16,11 +17,14 @@ struct QuickPasteHintTests {
         #expect(model.quickPasteClip(number: 1)?.id == model.visible.first?.id)
         #expect(model.quickPasteClip(number: 2) == nil)
         model.updateQuickPasteModifier([])
+        #expect(!model.commandHeld)
         #expect(model.quickPasteNumber(at: 0) == nil)
         model.preferences.quickPasteModifier = .option
         model.updateQuickPasteModifier(.command)
+        #expect(model.commandHeld)
         #expect(model.quickPasteNumber(at: 0) == nil)
         model.updateQuickPasteModifier(.option)
+        #expect(!model.commandHeld)
         #expect(model.quickPasteNumber(at: 0) == 1)
         model.creatingBoard = true
         #expect(model.quickPasteNumber(at: 0) == nil)

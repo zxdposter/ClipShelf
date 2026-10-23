@@ -6,6 +6,8 @@ struct ShelfSearchField: NSViewRepresentable {
     let submit: () -> Void
     let register: (NSTextField) -> Void
     let changed: () -> Void
+    var focusChanged: (Bool) -> Void = { _ in }
+    var moveSuggestion: (Int) -> Bool = { _ in false }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> SearchField {
@@ -31,6 +33,8 @@ struct ShelfSearchField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: ShelfSearchField
         init(_ parent: ShelfSearchField) { self.parent = parent }
+        func controlTextDidBeginEditing(_ notification: Notification) { parent.focusChanged(true) }
+        func controlTextDidEndEditing(_ notification: Notification) { parent.focusChanged(false) }
         func controlTextDidChange(_ notification: Notification) {
             guard let field = notification.object as? NSTextField,
                   (field.currentEditor() as? NSTextView)?.hasMarkedText() != true,
@@ -39,6 +43,9 @@ struct ShelfSearchField: NSViewRepresentable {
             parent.changed()
         }
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard !textView.hasMarkedText() else { return false }
+            if commandSelector == #selector(NSResponder.moveDown(_:)) { return parent.moveSuggestion(1) }
+            if commandSelector == #selector(NSResponder.moveUp(_:)) { return parent.moveSuggestion(-1) }
             guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
             parent.submit()
             return true

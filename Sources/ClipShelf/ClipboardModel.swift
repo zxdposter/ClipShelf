@@ -4,12 +4,14 @@ import ClipboardCore
 
 @MainActor
 final class ClipboardModel: ObservableObject {
-    @Published var history = History() { didSet { scheduleSearch(indexChanged: true) } }
-    @Published var query = "" { didSet { if query != oldValue { scheduleSearch() } } }
+    @Published var history = History() { didSet { refreshSourceApps(); scheduleSearch(indexChanged: true) } }
+    @Published var query = "" { didSet { if query != oldValue { if sourceSuggestionIndex != nil { sourceSuggestionIndex = nil }; scheduleSearch() } } }
     @Published private(set) var searchMatches = Set<UUID>()
     @Published private(set) var searchPending = false
     @Published private(set) var hasSearchResults = false
     private let searchIndex: any ClipboardSearchIndex
+    private let fallbackIndex = MemorySearchIndex()
+    private var scheduledQuery = ""
     private var indexTask: Task<Bool, Never>?
     private var indexRevision = 0
     private var readyRevision: Int?
@@ -19,6 +21,9 @@ final class ClipboardModel: ObservableObject {
 
     private func scheduleSearch(indexChanged: Bool = false) {
         guard !locked else { return }
+        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard indexChanged || value != scheduledQuery else { return }
+        scheduledQuery = value
         searchRevision += 1
         let revision = searchRevision
         searchTask?.cancel()
@@ -37,9 +42,8 @@ final class ClipboardModel: ObservableObject {
                 return success
             }
         }
-        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
-            hasSearchResults = false
+            if hasSearchResults { hasSearchResults = false }
             if searchPending { searchPending = false }
             if !searchMatches.isEmpty { searchMatches = [] }
             if !indexChanged { resetSelection() }
@@ -51,7 +55,12 @@ final class ClipboardModel: ObservableObject {
             do {
                 try await Task.sleep(for: .milliseconds(120))
                 guard let self, self.searchRevision == revision else { return }
-                let indexed = self.readyRevision == self.indexRevision
+                var indexed = self.readyRevision == self.indexRevision
+                // The local index is already building; don't transliterate the same history twice on cold start.
+                if !indexed, index is MemorySearchIndex {
+                    indexed = await self.indexTask?.value == true
+                    try Task.checkCancellation()
+                }
                 let snapshot = self.history.clips.map(SearchDocument.init)
                 let ids: Set<UUID>
                 var failure = indexed ? nil : "Spotlight index unavailable; background search used"
@@ -60,18 +69,18 @@ final class ClipboardModel: ObservableObject {
                     catch {
                         try Task.checkCancellation()
                         failure = "Spotlight query failed; background search used: \(error.localizedDescription)"
-                        let fallback = MemorySearchIndex()
+                        let fallback = self.fallbackIndex
                         try await fallback.synchronize(snapshot)
                         ids = try await fallback.search(value)
                     }
                 } else {
-                    let fallback = MemorySearchIndex()
+                    let fallback = self.fallbackIndex
                     try await fallback.synchronize(snapshot)
                     ids = try await fallback.search(value)
                 }
                 guard !Task.isCancelled, self.searchRevision == revision else { return }
                 self.searchError = failure
-                self.hasSearchResults = true
+                if !self.hasSearchResults { self.hasSearchResults = true }
                 if self.searchMatches != ids { self.searchMatches = ids }
                 self.searchPending = false
                 self.resetSelection()
@@ -91,7 +100,80 @@ final class ClipboardModel: ObservableObject {
     }
     func waitForIndex() async { _ = await indexTask?.value }
     weak var searchField: NSTextField?
-    @Published var filter: ClipKind?
+    @Published var searchFocused = false
+    @Published private(set) var sourceApps: [SourceApplication] = []
+    @Published var selectedSourceIDs = Set<String>() {
+        didSet {
+            if selectedSourceIDs != oldValue {
+                if sourceSuggestionIndex != nil { sourceSuggestionIndex = nil }
+                refreshSourceApps(); resetSelection()
+            }
+        }
+    }
+    @Published private(set) var sourceSuggestionIndex: Int?
+    var searchActive: Bool { !query.isEmpty || !selectedSourceIDs.isEmpty || filter != nil }
+    var selectedSourceApps: [SourceApplication] { sourceApps.filter { selectedSourceIDs.contains($0.id) } }
+    var suggestedSourceApps: [SourceApplication] {
+        guard searchFocused, let term = query.split(whereSeparator: \.isWhitespace).last else { return [] }
+        return Array(sourceApps.filter { !selectedSourceIDs.contains($0.id) && $0.matches(String(term)) }.prefix(4))
+    }
+    private func refreshSourceApps() {
+        var byID: [String: SourceApplication] = [:]
+        for clip in history.clips {
+            let id = SourceApplication.id(for: clip)
+            guard byID[id] == nil else { continue }
+            byID[id] = sourceApps.first(where: { $0.id == id && $0.name == clip.sourceName }) ?? SourceApplication(clip)
+        }
+        // Keep active tokens when their last item disappears; never silently broaden an active filter.
+        for app in sourceApps where selectedSourceIDs.contains(app.id) && byID[app.id] == nil { byID[app.id] = app }
+        let apps = byID.values.sorted {
+            let order = $0.name.localizedStandardCompare($1.name)
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
+        }
+        if sourceApps != apps { sourceApps = apps }
+    }
+    func toggleSourceApp(_ app: SourceApplication) {
+        if selectedSourceIDs.contains(app.id) { selectedSourceIDs.remove(app.id) }
+        else { selectedSourceIDs.insert(app.id) }
+        searchShown = true
+    }
+    func selectSourceSuggestion(_ app: SourceApplication) {
+        selectedSourceIDs.insert(app.id)
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let appRange = text.range(of: app.name, options: [.caseInsensitive, .diacriticInsensitive, .anchored, .backwards])
+        let remaining: String
+        if let appRange, appRange.lowerBound == text.startIndex || text[text.index(before: appRange.lowerBound)].isWhitespace {
+            remaining = String(text[..<appRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            remaining = text.lastIndex(where: \.isWhitespace).map { String(text[..<$0]).trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+        }
+        replaceSearchText(remaining)
+        searchShown = true
+        searchField?.window?.makeFirstResponder(searchField)
+    }
+    func moveSourceSuggestion(_ direction: Int) -> Bool {
+        let count = suggestedSourceApps.count
+        guard count > 0 else { return false }
+        let next = sourceSuggestionIndex.map { min(max($0 + direction, 0), count - 1) } ?? (direction > 0 ? 0 : count - 1)
+        if sourceSuggestionIndex != next { sourceSuggestionIndex = next }
+        return true
+    }
+    func submitSearch() {
+        let suggestions = suggestedSourceApps
+        if let index = sourceSuggestionIndex, suggestions.indices.contains(index) {
+            selectSourceSuggestion(suggestions[index]); return
+        }
+        Task { [weak self] in await self?.focusSearchResults() }
+    }
+    func focusSearchResults() async {
+        let editor = searchField?.currentEditor()
+        await waitForSearch()
+        guard searchShown, let editor, searchField?.currentEditor() === editor else { return }
+        searchField?.window?.makeFirstResponder(nil)
+        resetSelection()
+        selectionScrollID = selectedID
+    }
+    @Published var filter: ClipKind? { didSet { if filter != oldValue { resetSelection() } } }
     @Published var selectedBoardID: UUID?
     @Published var dropTargetBoardID: UUID?
     @Published var searchShown = false
@@ -114,7 +196,10 @@ final class ClipboardModel: ObservableObject {
         previewID = id
     }
     @Published var quickPasteHeld = false
+    @Published private(set) var commandHeld = false
     func updateQuickPasteModifier(_ flags: NSEvent.ModifierFlags) {
+        let command = flags.contains(.command)
+        if commandHeld != command { commandHeld = command }
         let held = flags.contains(preferences.quickPasteModifier.flag)
         if quickPasteHeld != held { quickPasteHeld = held }
     }
@@ -246,16 +331,25 @@ final class ClipboardModel: ObservableObject {
             clips = board.clipIDs.compactMap { byID[$0] }
         } else { clips = history.clips }
         let searching = hasSearchResults && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return clips.filter { (filter == nil || $0.kind == filter) && (!searching || searchMatches.contains($0.id)) }
+        return clips.filter {
+            (filter == nil || $0.kind == filter) &&
+            (selectedSourceIDs.isEmpty || selectedSourceIDs.contains(SourceApplication.id(for: $0))) &&
+            (!searching || searchMatches.contains($0.id))
+        }
     }
     func clearSearch() {
+        if !selectedSourceIDs.isEmpty { selectedSourceIDs = [] }
+        if filter != nil { filter = nil }
+        replaceSearchText("")
+    }
+    private func replaceSearchText(_ text: String) {
         if let editor = searchField?.currentEditor() as? NSTextView {
             editor.inputContext?.discardMarkedText()
-            editor.string = ""
-            editor.setSelectedRange(NSRange(location: 0, length: 0))
+            editor.string = text
+            editor.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
         }
-        searchField?.stringValue = ""
-        query = ""
+        searchField?.stringValue = text
+        query = text
     }
     func selectBoard(_ id: UUID?) { selectedBoardID = id; resetSelection() }
     func beginBoardEdit(_ board: Pinboard? = nil, clip: Clip? = nil) {
@@ -342,9 +436,10 @@ final class ClipboardModel: ObservableObject {
         self.pasteboard = pasteboard
         self.storageURL = storageURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ClipShelf/history.plist")
-        if demo { seedDemo(); scheduleSearch(indexChanged: true); return }
+        if demo { seedDemo(); refreshSourceApps(); scheduleSearch(indexChanged: true); return }
         do { history = try History.load(from: self.storageURL) }
         catch { locked = true; storageFailed = true; message = error.localizedDescription }
+        refreshSourceApps()
         scheduleSearch(indexChanged: true)
         // Start with the current counter so opening the app doesn't import an old clipboard.
         lastChange = pasteboard.changeCount

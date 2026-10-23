@@ -2,9 +2,48 @@ import AppKit
 import Testing
 import Combine
 import SwiftUI
+import ClipboardCore
 @testable import ClipShelf
 
 struct SearchInputTests {
+    @Test @MainActor func returnWaitsForResultsAndFocusesWithoutCopying() async throws {
+        _ = NSApplication.shared
+        let item = Clip(kind: .text, text: "target", sourceName: "Test", sourceBundle: "test", items: [], identity: Data())
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        model.history = History(clips: [item])
+        model.searchShown = true
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 40), styleMask: .borderless, backing: .buffered, defer: false)
+        let field = ShelfSearchField.SearchField(frame: NSRect(x: 0, y: 0, width: 300, height: 22))
+        window.contentView = field
+        defer { window.contentView = nil }
+        model.searchField = field
+        #expect(window.makeFirstResponder(field))
+        let editor = try #require(field.currentEditor())
+        model.query = "target"
+        await model.focusSearchResults()
+        #expect(window.firstResponder !== editor)
+        #expect(model.selectedClips.map(\.id) == [item.id])
+        #expect(model.copiedID == nil)
+    }
+    @Test @MainActor func suggestionNavigationDoesNotInterceptChineseComposition() throws {
+        _ = NSApplication.shared
+        var moves: [Int] = []
+        var submits = 0
+        let view = ShelfSearchField(text: .constant(""), submit: { submits += 1 }, register: { _ in }, changed: {}, moveSuggestion: { moves.append($0); return true })
+        let delegate = view.makeCoordinator()
+        let editor = NSTextView()
+        let control = NSControl()
+        #expect(delegate.control(control, textView: editor, doCommandBy: #selector(NSResponder.moveDown(_:))))
+        #expect(delegate.control(control, textView: editor, doCommandBy: #selector(NSResponder.moveUp(_:))))
+        #expect(moves == [1, -1])
+        editor.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(!delegate.control(control, textView: editor, doCommandBy: #selector(NSResponder.moveDown(_:))))
+        #expect(!delegate.control(control, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        #expect(submits == 0)
+        editor.unmarkText()
+        #expect(delegate.control(control, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        #expect(submits == 1)
+    }
     @Test @MainActor func unchangedKeyboardAndSelectionDoNotRefreshTheShelf() {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         model.preferences.quickPasteModifier = .command
@@ -18,8 +57,10 @@ struct SearchInputTests {
         }
         #expect(changes == 0)
         model.updateQuickPasteModifier(.command)
+        let changesAfterPress = changes
         model.updateQuickPasteModifier(.command)
-        #expect(changes == 1)
+        #expect(changesAfterPress > 0)
+        #expect(changes == changesAfterPress)
     }
     @Test @MainActor func compositionDoesNotFilterUntilChineseTextIsCommitted() throws {
         _ = NSApplication.shared

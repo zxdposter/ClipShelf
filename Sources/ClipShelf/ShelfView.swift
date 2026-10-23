@@ -18,6 +18,11 @@ struct ShelfView: View {
     let enableCapture: () -> Void
     let paste: ([Clip], Bool) -> Void
     @FocusState private var boardFocused: Bool
+    private var _sourceDetailsShown = State(initialValue: false)
+    private var sourceDetailsShown: Bool {
+        get { _sourceDetailsShown.wrappedValue }
+        nonmutating set { _sourceDetailsShown.wrappedValue = newValue }
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var _pendingBoardDelete = State<Pinboard?>(initialValue: nil)
     private var pendingBoardDelete: Pinboard? {
@@ -26,23 +31,24 @@ struct ShelfView: View {
     }
     private var motion: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.20) }
     var body: some View {
+        let clips = model.visible
         VStack(spacing: 0) {
-            toolbar
-            if model.visible.isEmpty {
+            toolbar.zIndex(1)
+            if clips.isEmpty {
                 if model.searchPending { Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity) }
                 else { VStack(spacing: 12) {
-                    ShelfIllustration(searching: !model.query.isEmpty).frame(width: 150, height: 94)
-                    Text(!model.query.isEmpty ? L("没有找到匹配的内容") : (model.selectedBoardID == nil ? L("留住刚刚复制的灵感") : L("把值得留下的内容，放进这个收藏集")))
+                    ShelfIllustration(searching: model.searchActive).frame(width: 150, height: 94)
+                    Text(model.searchActive ? L("没有找到匹配的内容") : (model.selectedBoardID == nil ? L("留住刚刚复制的灵感") : L("把值得留下的内容，放进这个收藏集")))
                         .font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
-                    Text(model.query.isEmpty ? L("复制文字、图片或文件，即可开始收集") : L("试试更短的关键词，或切换内容类型")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(!model.searchActive ? L("复制文字、图片或文件，即可开始收集") : L("试试更短的关键词，或切换内容类型")).font(.system(size: 12)).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity) }
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal) {
                         LazyHStack(spacing: 16) {
-                            ForEach(Array(model.visible.enumerated()), id: \.element.id) { index, clip in
+                            ForEach(Array(clips.enumerated()), id: \.element.id) { index, clip in
                                 ClipCard(clip: clip, quickPasteNumber: model.quickPasteNumber(at: index), selected: model.selection.ids.contains(clip.id),
-                                         model: model,
+                                         model: model, language: localization.language,
                                          copy: { paste(model.targets(for: clip), false) },
                                          pastePlain: { paste(model.targets(for: clip), true) },
                                          remove: { model.remove(clip) })
@@ -63,10 +69,8 @@ struct ShelfView: View {
         }
         .foregroundStyle(Color.primary).tint(ShelfDesign.accent).background { ShelfGlassBackground() }
         .clipShape(RoundedRectangle(cornerRadius: 22))
-        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(LinearGradient(colors: [ShelfDesign.edge, ShelfDesign.line], startPoint: .top, endPoint: .bottom), lineWidth: 1))
         .animation(motion, value: model.selectedBoardID)
         .animation(motion, value: model.history.boards)
-        .onChange(of: model.filter) { _, _ in model.resetSelection() }
         .onChange(of: model.creatingBoard) { _, value in if !value { boardFocused = false } }
         .onChange(of: model.editingBoardID) { _, id in if id == nil { boardFocused = false } }
         .alert(L("新建收藏集"), isPresented: $model.namingDroppedBoard) {
@@ -83,7 +87,7 @@ struct ShelfView: View {
 
     private var toolbar: some View {
         HStack(spacing: 14) {
-            search(width: 280)
+            search(width: 360)
                 Button { model.selectBoard(nil) } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "tray.full")
@@ -93,7 +97,6 @@ struct ShelfView: View {
                         .foregroundStyle(model.selectedBoardID == nil ? ShelfDesign.accent : .primary)
                         .background(model.selectedBoardID == nil ? ShelfDesign.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
                 }.buttonStyle(ShelfHoverStyle()).accessibilityLabel(L("剪贴板")).help(L("全部剪贴板记录"))
-                Rectangle().fill(ShelfDesign.line).frame(width: 1, height: 16)
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
@@ -126,8 +129,7 @@ struct ShelfView: View {
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel(L("更多")).id(localization.language)
                 if model.demo { Button(L("启用采集"), action: enableCapture).font(.system(size: 11)).buttonStyle(.bordered) }
         }.frame(height: 36)
-            .padding(.horizontal, 24).padding(.top, 8).padding(.bottom, 4)
-            .overlay(alignment: .bottom) { Rectangle().fill(ShelfDesign.line).frame(height: 1).padding(.horizontal, 24) }
+            .padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 2)
     }
     private func search(width: CGFloat) -> some View {
         HStack(spacing: 6) {
@@ -135,29 +137,131 @@ struct ShelfView: View {
                 if !model.searchShown { model.searchShown = true }
             } label: { Image(systemName: "magnifyingglass").font(.system(size: model.searchShown ? 15 : 20)).foregroundStyle(model.searchShown ? .secondary : .primary).frame(width: 30, height: 30) }
                 .buttonStyle(ShelfHoverStyle()).accessibilityLabel(L("搜索")).help(L("搜索 (⌘F)"))
-            ShelfSearchField(text: $model.query, submit: { paste(model.selectedClips, false) },
+            if !model.selectedSourceApps.isEmpty {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 4) {
+                        ForEach(model.selectedSourceApps) { app in
+                            Button { model.toggleSourceApp(app) } label: {
+                                HStack(spacing: 4) {
+                                    sourceIcon(app)
+                                    Text(app.name).lineLimit(1)
+                                    Image(systemName: "xmark").font(.system(size: 8, weight: .semibold))
+                                }.font(.system(size: 11)).padding(.horizontal, 6).padding(.vertical, 4)
+                                    .background(ShelfDesign.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+                            }.buttonStyle(.plain).help(L("移除来源筛选：%@", app.name))
+                                .accessibilityLabel(L("移除来源筛选：%@", app.name))
+                        }
+                    }.fixedSize(horizontal: true, vertical: false)
+                    Button { sourceDetailsShown.toggle() } label: {
+                        HStack(spacing: 4) {
+                            Text("\(model.selectedSourceApps.count)").monospacedDigit()
+                        }.font(.system(size: 11, weight: .medium)).padding(.horizontal, 7).padding(.vertical, 4)
+                            .background(ShelfDesign.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+                    }.buttonStyle(.plain)
+                        .accessibilityLabel(L("已选 %@ 个来源应用", model.selectedSourceApps.count))
+                        .help(model.selectedSourceApps.map(\.name).joined(separator: "\n"))
+                        .popover(isPresented: _sourceDetailsShown.projectedValue, arrowEdge: .bottom) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(L("来源应用")).font(.headline)
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        ForEach(model.selectedSourceApps) { app in
+                                            Button {
+                                                model.toggleSourceApp(app)
+                                                if model.selectedSourceIDs.isEmpty { sourceDetailsShown = false }
+                                            } label: {
+                                                HStack(spacing: 8) {
+                                                    sourceIcon(app)
+                                                    Text(app.name).lineLimit(1)
+                                                    Spacer()
+                                                    Image(systemName: "xmark").font(.system(size: 9))
+                                                }.padding(6).contentShape(Rectangle())
+                                            }.buttonStyle(ShelfHoverStyle()).accessibilityLabel(L("移除来源筛选：%@", app.name))
+                                        }
+                                    }
+                                }.frame(height: min(CGFloat(model.selectedSourceApps.count) * 32, 240))
+                            }.padding(12).frame(width: 240)
+                        }
+                }.frame(width: sourceTokensWidth, alignment: .leading)
+            }
+            ShelfSearchField(text: $model.query, submit: model.submitSearch,
                              register: { model.searchField = $0 },
-                             changed: { if !model.searchShown { model.searchShown = true } })
+                             changed: { if !model.searchShown { model.searchShown = true } },
+                             focusChanged: { if model.searchFocused != $0 { model.searchFocused = $0 } }, moveSuggestion: model.moveSourceSuggestion)
                 .frame(height: 22)
             if !model.searchShown {
                 Text("⌘ F").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
             }
             if model.searchShown {
-                if !model.query.isEmpty {
+                if model.searchActive {
                     Button { model.clearSearch() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.accessibilityLabel(L("清除搜索"))
                 }
                 Menu {
-                    Button(L("全部类型")) { model.filter = nil }
-                    ForEach(ClipKind.allCases, id: \.self) { kind in Button(kind.label) { model.filter = kind } }
-                } label: { Image(systemName: "line.3.horizontal.decrease").foregroundStyle(model.filter == nil ? Color.secondary : ShelfDesign.accent) }
+                    Section(L("内容类型")) {
+                        Button(L("全部类型")) { model.filter = nil }
+                        ForEach(ClipKind.allCases, id: \.self) { kind in
+                            Toggle(kind.label, isOn: Binding(get: { model.filter == kind }, set: { model.filter = $0 ? kind : nil }))
+                        }
+                    }
+                    Section(L("来源应用")) {
+                        Button(L("全部应用")) { model.selectedSourceIDs = [] }
+                        ForEach(model.sourceApps) { app in
+                            Button { model.toggleSourceApp(app) } label: {
+                                Label { Text(app.name) } icon: {
+                                    if model.selectedSourceIDs.contains(app.id) { Image(systemName: "checkmark") }
+                                    else { sourceIcon(app) }
+                                }
+                            }
+                        }
+                    }
+                } label: { Image(systemName: "line.3.horizontal.decrease").foregroundStyle(model.filter == nil && model.selectedSourceIDs.isEmpty ? Color.secondary : ShelfDesign.accent) }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel(L("筛选")).id(localization.language)
             }
         }
         .padding(.horizontal, 8).frame(width: model.searchShown ? width : 200, height: 32)
         .animation(motion, value: model.searchShown)
         .contentShape(RoundedRectangle(cornerRadius: 9)).onTapGesture { if !model.searchShown { model.searchShown = true } }
-        .background(ShelfDesign.paper.opacity(0.60), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(model.searchShown ? ShelfDesign.accent.opacity(0.65) : ShelfDesign.line, lineWidth: 1))
+        .background(ShelfDesign.paper.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ShelfDesign.accent.opacity(model.searchFocused ? 0.24 : 0), lineWidth: 0.75))
+        .shadow(color: .black.opacity(0.035), radius: 3, y: 1)
+        .overlay(alignment: .topLeading) {
+            if model.searchShown && !model.suggestedSourceApps.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("来源应用")).font(.system(size: 10)).foregroundStyle(.secondary).padding(6)
+                    ForEach(Array(model.suggestedSourceApps.enumerated()), id: \.element.id) { index, app in
+                        Button { model.selectSourceSuggestion(app) } label: {
+                            HStack(spacing: 8) {
+                                sourceIcon(app)
+                                Text(app.name).font(.system(size: 12)).lineLimit(1)
+                                Spacer()
+                                if model.sourceSuggestionIndex == index { Image(systemName: "return").font(.system(size: 10)) }
+                            }.padding(7).contentShape(Rectangle())
+                                .background(model.sourceSuggestionIndex == index ? ShelfDesign.accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                        }.buttonStyle(ShelfHoverStyle()).accessibilityLabel(L("筛选来源：%@", app.name))
+                    }
+                }.padding(5).frame(width: width)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(ShelfDesign.line, lineWidth: 1))
+                    .shadow(color: .black.opacity(0.12), radius: 8, y: 3).offset(y: 38)
+            }
+        }
+    }
+    private func sourceIcon(_ app: SourceApplication) -> some View {
+        Image(nsImage: SourceAppearance.forApp(app.bundle, fallback: "app").icon).resizable().frame(width: 14, height: 14)
+    }
+    private var sourceTokensWidth: CGFloat {
+        let apps = model.selectedSourceApps
+        let font = NSFont.systemFont(ofSize: 11)
+        var width: CGFloat = 0
+        for app in apps {
+            if width > 0 { width += 4 }
+            width += ceil((app.name as NSString).size(withAttributes: [.font: font]).width) + 44
+            if width > 140 {
+                let count = "\(apps.count)" as NSString
+                return max(24, ceil(count.size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)]).width) + 14)
+            }
+        }
+        return width
     }
     private var boardEditor: some View {
         HStack(spacing: 6) {
@@ -206,18 +310,12 @@ private struct ClipCard: View {
     let quickPasteNumber: Int?
     let selected: Bool
     @ObservedObject var model: ClipboardModel
+    let language: AppLanguage
     let copy: () -> Void
     let pastePlain: () -> Void
     let remove: () -> Void
     @FocusState private var renameFocused: Bool
     private var appearance: SourceAppearance { SourceAppearance.forApp(clip.sourceBundle, fallback: clip.kind.symbol) }
-    private var image: NSImage? {
-        clip.items.flatMap { $0 }.first(where: { $0.type == "public.png" || $0.type == "public.tiff" }).flatMap { NSImage(data: $0.data) }
-    }
-    private var footerText: String {
-        if clip.kind == .text || clip.kind == .link { return L("%@ 个字符", clip.text.count) }
-        return Int64(clip.byteCount).formatted(.byteCount(style: .file).locale(Locale(identifier: AppLocalization.shared.language.rawValue)))
-    }
     private func relativeTime(_ now: Date) -> String {
         if now.timeIntervalSince(clip.copiedAt) < 60 { return L("刚刚") }
         let formatter = RelativeDateTimeFormatter(); formatter.locale = Locale(identifier: AppLocalization.shared.language.rawValue); formatter.unitsStyle = .short
@@ -225,48 +323,41 @@ private struct ClipCard: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Image(systemName: clip.kind.symbol).foregroundStyle(ShelfDesign.typeColor(clip.kind))
-                    if model.renamingID == clip.id {
+                if model.renamingID == clip.id {
                         TextField(L("名称"), text: $model.renameDraft).textFieldStyle(.plain).focused($renameFocused)
                             .onSubmit { model.finishRename() }.onAppear { renameFocused = true }
                             .onChange(of: renameFocused) { _, focused in if !focused && model.renamingID == clip.id { model.finishRename() } }
-                    } else { Text(clip.title ?? clip.kind.label).lineLimit(1) }
-                    Spacer(minLength: 4)
-                    TimelineView(.periodic(from: .now, by: 60)) { context in Text(relativeTime(context.date)).font(.system(size: 10)).foregroundStyle(.secondary) }
-                }.font(.system(size: 11, weight: .medium))
-                cardContent.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                HStack(spacing: 6) {
-                    Image(nsImage: appearance.icon).resizable().frame(width: 16, height: 16)
-                    Text(clip.sourceName).font(.system(size: 10, weight: .medium)).lineLimit(1).foregroundStyle(.secondary)
-                    Circle().fill(Color(nsColor: appearance.color)).frame(width: 5, height: 5)
-                    Spacer(minLength: 2)
-                    if quickPasteNumber == nil { Text(footerText).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
-                    else { Color.clear.frame(width: 22, height: 16) }
+                } else if let title = clip.title {
+                    Text(title).font(.system(size: 11, weight: .medium)).lineLimit(1)
                 }
+                ClipCardContent(clip: clip, linkPreviews: model.preferences.linkPreviews, refreshID: model.presentationID)
+                    .equatable().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                ClipCardFooter(clip: clip, quickPasteNumber: quickPasteNumber, language: language).equatable()
+                    .offset(y: 4)
             }.padding(16).frame(width: 256, height: 268)
                 .background {
-                    RoundedRectangle(cornerRadius: 14).fill(ShelfDesign.card)
-                        .overlay(alignment: .bottom) {
-                            UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14)
-                                .fill(Color(nsColor: appearance.color).opacity(0.26)).frame(height: 40)
-                                .overlay(alignment: .top) {
-                                    Rectangle().fill(Color(nsColor: appearance.color).opacity(0.85)).frame(height: 2)
-                                }
+                    RoundedRectangle(cornerRadius: 16).fill(ShelfDesign.card)
+                        .overlay {
+                            LinearGradient(stops: [
+                                .init(color: .clear, location: 0.55),
+                                .init(color: Color(nsColor: appearance.color).opacity(0.035), location: 0.78),
+                                .init(color: Color(nsColor: appearance.color).opacity(0.13), location: 1)
+                            ], startPoint: .top, endPoint: .bottom)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
                         }
                 }
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ShelfDesign.edge, lineWidth: 0.5))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(selected ? ShelfDesign.accent : ShelfDesign.line, lineWidth: selected ? 1.5 : 0.75))
-                .overlay(alignment: .bottomTrailing) {
-                    if let quickPasteNumber {
-                        Text(String(quickPasteNumber)).font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(ShelfDesign.accent).frame(width: 22, height: 22)
-                            .background(ShelfDesign.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 5))
-                            .padding(12).allowsHitTesting(false).accessibilityLabel(L("快速粘贴 %@", quickPasteNumber))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(ShelfDesign.accent.opacity(selected ? 0.55 : 0), lineWidth: 1.25))
+                .overlay(alignment: .topTrailing) {
+                    if model.commandHeld {
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            Text(relativeTime(context.date)).font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 5)
+                                .background(ShelfDesign.paper, in: RoundedRectangle(cornerRadius: 7))
+                        }.padding(8).allowsHitTesting(false)
                     }
                 }
-                .shadow(color: .black.opacity(selected ? 0.20 : 0.10), radius: selected ? 10 : 6, y: 4)
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+                .shadow(color: .black.opacity(selected ? 0.12 : 0.065), radius: selected ? 12 : 8, y: selected ? 5 : 3)
+            .contentShape(RoundedRectangle(cornerRadius: 16))
             // A Button consumes mouse tracking before the native drag source can start.
             .onDrag { NSItemProvider(object: model.dragPayload(for: clip) as NSString) } preview: {
                 CardDragPreview(clip: clip, count: model.targets(for: clip).count)
@@ -287,24 +378,6 @@ private struct ClipCard: View {
             .accessibilityHint(L("单击选择，Command 点击切换选择，Shift 点击连续选择，双击或按回车复制并收起"))
             .accessibilityAddTraits(selected ? .isSelected : [])
             .contextMenu { cardMenu }
-    }
-    @ViewBuilder private var cardContent: some View {
-        if clip.kind == .link, model.preferences.linkPreviews, let url = safeLinkURL(clip) {
-            LinkPreview(url: url).allowsHitTesting(false).clipShape(RoundedRectangle(cornerRadius: 8))
-        } else if clip.kind == .files {
-            VStack(alignment: .leading, spacing: 6) {
-                FileCardThumbnail(urls: filePreviewURLs(clip), refreshID: model.presentationID)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
-                Text(clip.text).font(.system(size: 11)).lineLimit(2).foregroundStyle(.secondary)
-            }
-        } else if let image {
-            Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
-        } else {
-            Text(cardClipText(clip)).font(.system(size: 14)).lineSpacing(4).multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).clipped()
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.85), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
-        }
     }
     @ViewBuilder private var cardMenu: some View {
 
@@ -344,6 +417,58 @@ private struct ClipCard: View {
 
     }
 
+}
+
+private struct ClipCardContent: View, Equatable {
+    let clip: Clip
+    let linkPreviews: Bool
+    let refreshID: UUID
+    private var image: NSImage? {
+        clip.items.flatMap { $0 }.first(where: { $0.type == "public.png" || $0.type == "public.tiff" }).flatMap { NSImage(data: $0.data) }
+    }
+    var body: some View {
+        if clip.kind == .link, linkPreviews, let url = safeLinkURL(clip) {
+            LinkPreview(url: url).allowsHitTesting(false).clipShape(RoundedRectangle(cornerRadius: 8))
+        } else if clip.kind == .files {
+            VStack(alignment: .leading, spacing: 6) {
+                FileCardThumbnail(urls: filePreviewURLs(clip), refreshID: refreshID)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
+                Text(clip.text).font(.system(size: 11)).lineLimit(2).foregroundStyle(.secondary)
+            }
+        } else if let image {
+            Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
+        } else {
+            Text(cardClipText(clip)).font(.system(size: 14)).lineSpacing(4).multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).clipped()
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.85), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+        }
+    }
+}
+
+private struct ClipCardFooter: View, Equatable {
+    let clip: Clip
+    let quickPasteNumber: Int?
+    let language: AppLanguage
+    var body: some View {
+        let appearance = SourceAppearance.forApp(clip.sourceBundle, fallback: clip.kind.symbol)
+        HStack(spacing: 6) {
+            Image(nsImage: appearance.icon).resizable().frame(width: 16, height: 16)
+            Text(clip.sourceName).font(.system(size: 10, weight: .medium)).lineLimit(1).foregroundStyle(.secondary)
+            Spacer(minLength: 2)
+            ZStack(alignment: .trailing) {
+                Text(clip.kind == .text || clip.kind == .link ? L("%@ 个字符", clip.text.count) : Int64(clip.byteCount).formatted(.byteCount(style: .file).locale(Locale(identifier: language.rawValue))))
+                    .opacity(quickPasteNumber == nil ? 1 : 0)
+                    .accessibilityHidden(quickPasteNumber != nil)
+                if let quickPasteNumber {
+                    Text(String(quickPasteNumber)).accessibilityLabel(L("快速粘贴 %@", quickPasteNumber))
+                }
+            }.font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+            Image(systemName: clip.kind.symbol)
+                .font(.system(size: 11)).foregroundStyle(ShelfDesign.typeColor(clip.kind))
+                .accessibilityLabel(clip.kind.label)
+        }
+    }
 }
 
 struct ShelfHoverStyle: ButtonStyle {

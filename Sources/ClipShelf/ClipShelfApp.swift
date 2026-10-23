@@ -111,8 +111,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             if event.keyCode == 48, event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
                self.model.renamingID == nil, !self.model.creatingBoard, self.model.editingBoardID == nil {
-                self.model.moveSelection(event.modifierFlags.contains(.shift) ? -1 : 1)
-                self.window.makeFirstResponder(nil)
+                if let editor, self.model.searchField?.currentEditor() === editor { self.model.submitSearch() }
+                else { self.model.searchShown = true; self.focusSearch() }
                 return nil
             }
             let digits: [UInt16: Int] = [18: 0, 19: 1, 20: 2, 21: 3, 23: 4, 22: 5, 26: 6, 28: 7, 25: 8]
@@ -443,7 +443,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func hideWindow(completion: (() -> Void)? = nil) {
         guard window.isVisible, !hiding else { completion?(); return }
-        model.quickPasteHeld = false
+        model.updateQuickPasteModifier([])
         model.closePreview()
         model.renamingID = nil
         hiding = true
