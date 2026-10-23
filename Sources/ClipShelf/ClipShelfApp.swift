@@ -97,7 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 else if self.model.searchShown {
                     self.model.clearSearch()
                     self.model.searchShown = false
-                    self.focusSearch()
+                    self.window.makeFirstResponder(nil)
                 } else { self.hideWindow() }
                 return nil
             }
@@ -165,10 +165,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 return nil
             }
             if !event.modifierFlags.contains(.command), !event.modifierFlags.contains(.control),
-               let text = event.characters, !text.isEmpty, text.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
-                if let field = self.model.searchField, field.window === self.window {
-                    self.focusSearch()
+               let text = event.charactersIgnoringModifiers, !text.isEmpty, text.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
+                if let field = self.model.searchField as? ShelfSearchField.SearchField, field.window === self.window {
                     if !self.model.searchShown { self.model.searchShown = true }
+                    if field.beginTyping(with: event) { return nil }
                 }
                 return event
             }
@@ -412,7 +412,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func focusSearch() {
         guard let field = model.searchField, field.window === window,
               field.currentEditor() !== window.firstResponder else { return }
-        window.makeFirstResponder(field)
+        (field as? ShelfSearchField.SearchField)?.focusForSearch()
     }
 
     @objc func showWindow() {
@@ -429,7 +429,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setFrame(ShelfGeometry.hidden(from: restingFrame), display: false)
         window.alphaValue = 0
         window.makeKeyAndOrderFront(nil)
-        focusSearch()
+        window.makeFirstResponder(nil)
         animate(to: restingFrame, alpha: 1)
 
     }

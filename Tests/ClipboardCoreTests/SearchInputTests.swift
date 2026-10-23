@@ -109,13 +109,15 @@ struct SearchInputTests {
         #expect(query == "previous你好")
         #expect(updates == 1)
     }
-    @Test @MainActor func initialFocusAppendsWithoutSelectingExistingCharacters() throws {
+    @Test @MainActor func initialFocusAppendsWithoutSelectingExistingCharacters() async throws {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 40), styleMask: .borderless, backing: .buffered, defer: false)
         let field = ShelfSearchField.SearchField(frame: NSRect(x: 0, y: 0, width: 300, height: 22))
         field.stringValue = "a😀"
         window.contentView = field
         defer { window.contentView = nil }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(field.currentEditor() == nil)
         #expect(window.makeFirstResponder(field))
         let editor = try #require(field.currentEditor() as? NSTextView)
         #expect(editor.selectedRange() == NSRange(location: 3, length: 0))
@@ -144,5 +146,37 @@ struct SearchInputTests {
         #expect(model.query.isEmpty)
         #expect(editor.string.isEmpty)
         #expect(!editor.hasMarkedText())
+    }
+    @Test @MainActor func firstTypingKeyIsDeliveredOnceToNativeInputMethod() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 40), styleMask: .borderless, backing: .buffered, defer: false)
+        let input = SearchInputMethodProbe()
+        window.delegate = input
+        let field = ShelfSearchField.SearchField(frame: NSRect(x: 0, y: 0, width: 300, height: 22))
+        window.contentView = field
+        defer { window.contentView = nil; window.delegate = nil }
+        let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                windowNumber: window.windowNumber, context: nil, characters: "n",
+                                                charactersIgnoringModifiers: "n", isARepeat: false, keyCode: 45))
+        #expect(field.beginTyping(with: event))
+        #expect(input.editor.received.count == 1)
+        #expect(input.editor.received.first === event)
+        #expect(input.editor.hasMarkedText())
+        field.synchronizeText("")
+        field.focusForSearch()
+        #expect(input.editor.hasMarkedText())
+        #expect(input.editor.string == "ni")
+    }
+}
+
+@MainActor private final class SearchInputMethodProbe: NSObject, NSWindowDelegate {
+    let editor = Editor()
+    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? { editor }
+    final class Editor: NSTextView {
+        var received: [NSEvent] = []
+        override func interpretKeyEvents(_ eventArray: [NSEvent]) {
+            received += eventArray
+            setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
     }
 }

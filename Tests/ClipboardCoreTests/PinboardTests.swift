@@ -235,6 +235,8 @@ struct PinboardTests {
             NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
                 let ink = luminance(ShelfDesign.accent), paper = luminance(ShelfDesign.paper)
                 #expect((max(ink, paper) + 0.05) / (min(ink, paper) + 0.05) >= 4.5)
+                let selection = luminance(ShelfDesign.selection), card = luminance(ShelfDesign.card)
+                #expect((max(selection, card) + 0.05) / (min(selection, card) + 0.05) >= 3)
             }
         }
     }

@@ -66,6 +66,7 @@ The interface combines a frosted-glass shelf, readable cards, and source-app col
 ## Dark mode
 
 Open **Settings → General → Appearance** and choose **Light**, **Dark**, or **System**.
+You can also click the appearance icon to the left of **…** on the shelf to cycle through **System → Light → Dark**.
 
 - **Light:** bright panels and white cards.
 - **Dark:** dark cards, panels, and settings for a dimmer workspace, with source-app colors still visible.

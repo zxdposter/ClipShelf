@@ -17,6 +17,10 @@ struct PreferencesTests {
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.historyLimit == 200 && preferences.captures(.text))
         #expect(preferences.appearance == .system)
+        #expect(AppAppearance.system.next == .light)
+        #expect(AppAppearance.light.next == .dark)
+        #expect(AppAppearance.dark.next == .system)
+        #expect(AppAppearance.allCases.allSatisfy { NSImage(systemSymbolName: $0.symbol, accessibilityDescription: nil) != nil })
         #expect(preferences.appearance.nativeAppearance == nil)
         preferences.appearance = .dark
         #expect(preferences.appearance.nativeAppearance?.name == .darkAqua)

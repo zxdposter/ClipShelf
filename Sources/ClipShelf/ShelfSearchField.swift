@@ -57,12 +57,17 @@ struct ShelfSearchField: NSViewRepresentable {
             guard currentEditor() == nil, stringValue != value else { return }
             stringValue = value
         }
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            DispatchQueue.main.async { [weak self] in
-                guard let self, let window = self.window else { return }
-                if self.currentEditor() !== window.firstResponder { window.makeFirstResponder(self) }
-            }
+        func focusForSearch() {
+            guard let window else { return }
+            if window.isVisible { NSApp.activate(ignoringOtherApps: true) }
+            if currentEditor() !== window.firstResponder { window.makeFirstResponder(self) }
+        }
+        @discardableResult func beginTyping(with event: NSEvent) -> Bool {
+            focusForSearch()
+            guard let editor = currentEditor() as? NSTextView else { return false }
+            // Deliver the original first key to the input method, not a synthesized string.
+            editor.interpretKeyEvents([event])
+            return true
         }
         override func selectText(_ sender: Any?) {
             if let editor = currentEditor() as? NSTextView, editor.hasMarkedText() { return }
@@ -72,6 +77,7 @@ struct ShelfSearchField: NSViewRepresentable {
             }
         }
         override func becomeFirstResponder() -> Bool {
+            if window?.isVisible == true { NSApp.activate(ignoringOtherApps: true) }
             let accepted = super.becomeFirstResponder()
             if accepted, let editor = currentEditor() as? NSTextView, !editor.hasMarkedText() {
                 // Native text fields select existing text on focus, including the first typed character.

@@ -123,6 +123,7 @@ struct ShelfView: View {
                         .onChange(of: model.editingBoardID) { _, id in if let id { withAnimation(motion) { proxy.scrollTo(id) } } }
                         .onChange(of: model.selectedBoardID) { _, id in if let id { withAnimation(motion) { proxy.scrollTo(id) } } }
                 }
+                ShelfAppearanceButton(preferences: model.preferences)
                 Menu {
                     Button(model.paused ? L("继续采集") : L("暂停采集")) { model.paused.toggle() }.disabled(model.demo)
                     Button(L("顺序粘贴")) { model.startStack(); model.resetSelection() }
@@ -138,12 +139,13 @@ struct ShelfView: View {
     }
     private func search(width: CGFloat) -> some View {
         SearchInputRegion(input: model.searchInput) {
-        HStack(spacing: 6) {
+        HStack(spacing: model.searchShown ? 6 : 0) {
             Button {
                 if !model.searchShown { model.searchShown = true }
+                (model.searchField as? ShelfSearchField.SearchField)?.focusForSearch()
             } label: { Image(systemName: "magnifyingglass").font(.system(size: model.searchShown ? 15 : 20)).foregroundStyle(model.searchShown ? .secondary : .primary).frame(width: 30, height: 30) }
                 .buttonStyle(ShelfHoverStyle()).accessibilityLabel(L("搜索")).help(L("搜索 (⌘F)"))
-            if !model.selectedSourceApps.isEmpty {
+            if model.searchShown && !model.selectedSourceApps.isEmpty {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 4) {
                         ForEach(model.selectedSourceApps) { app in
@@ -197,10 +199,9 @@ struct ShelfView: View {
                              register: { model.searchField = $0 },
                              changed: { if !model.searchShown { model.searchShown = true } },
                              focusChanged: { if model.searchFocused != $0 { model.searchFocused = $0 } }, moveSuggestion: model.moveSourceSuggestion)
-                .frame(height: 22)
-            if !model.searchShown {
-                Text("⌘ F").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
-            }
+                .frame(width: model.searchShown ? nil : 0, height: 22)
+                .opacity(model.searchShown ? 1 : 0)
+                .allowsHitTesting(model.searchShown).accessibilityHidden(!model.searchShown)
             if model.searchShown {
                 if model.searchActive {
                     Button { model.clearSearch() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.accessibilityLabel(L("清除搜索"))
@@ -215,12 +216,15 @@ struct ShelfView: View {
                     }
             }
         }
-        .padding(.horizontal, 8).frame(width: model.searchShown ? width : 200, height: 32)
+        .padding(.horizontal, model.searchShown ? 8 : 0).frame(width: model.searchShown ? width : 32, height: 32)
         .animation(motion, value: model.searchShown)
-        .contentShape(RoundedRectangle(cornerRadius: 9)).onTapGesture { if !model.searchShown { model.searchShown = true } }
-        .background(ShelfDesign.paper.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ShelfDesign.accent.opacity(model.searchFocused ? 0.24 : 0), lineWidth: 0.75))
-        .shadow(color: .black.opacity(0.035), radius: 3, y: 1)
+        .contentShape(RoundedRectangle(cornerRadius: 9)).onTapGesture {
+            if !model.searchShown { model.searchShown = true }
+            (model.searchField as? ShelfSearchField.SearchField)?.focusForSearch()
+        }
+        .background(ShelfDesign.paper.opacity(model.searchShown ? 0.72 : 0), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ShelfDesign.accent.opacity(model.searchShown && model.searchFocused ? 0.24 : 0), lineWidth: 0.75))
+        .shadow(color: .black.opacity(model.searchShown ? 0.035 : 0), radius: 3, y: 1)
         .overlay(alignment: .topLeading) {
             if model.searchShown && !model.suggestedSourceApps.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -302,6 +306,21 @@ struct ShelfView: View {
                 Divider()
                 Button(L("删除分组…"), role: .destructive) { pendingBoardDelete = board }
             }
+    }
+}
+
+private struct ShelfAppearanceButton: View {
+    @ObservedObject var preferences: Preferences
+    var body: some View {
+        let appearance = preferences.appearance
+        Button { preferences.appearance = appearance.next } label: {
+            Image(systemName: appearance.symbol).font(.system(size: 14, weight: .medium))
+                .foregroundStyle(ShelfDesign.accent).frame(width: 28, height: 28)
+                .background(ShelfDesign.paper.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+                .shadow(color: .black.opacity(0.025), radius: 2, y: 1)
+        }.buttonStyle(ShelfHoverStyle())
+            .help("\(appearance.title) → \(appearance.next.title)")
+            .accessibilityLabel(L("外观") + ": " + appearance.title)
     }
 }
 
@@ -405,7 +424,8 @@ private struct ClipCard: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
                         }
                 }
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(ShelfDesign.accent.opacity(selected ? 0.55 : 0), lineWidth: 1.25))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(selected ? ShelfDesign.selection : .clear, lineWidth: 1.5))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(selected ? ShelfDesign.selection.opacity(0.12) : .clear, lineWidth: 3).padding(-2))
                 .overlay(alignment: .topTrailing) {
                     if model.commandHeld {
                         TimelineView(.periodic(from: .now, by: 60)) { context in

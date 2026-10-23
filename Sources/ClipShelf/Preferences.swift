@@ -25,6 +25,8 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     var title: String {
         switch self { case .system: L("跟随系统"); case .light: L("浅色"); case .dark: L("深色") }
     }
+    var next: Self { switch self { case .system: .light; case .light: .dark; case .dark: .system } }
+    var symbol: String { switch self { case .system: "circle.lefthalf.filled"; case .light: "sun.max"; case .dark: "moon" } }
     var nativeAppearance: NSAppearance? {
         switch self {
         case .system: nil
