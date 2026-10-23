@@ -14,7 +14,7 @@ A clipboard manager for Mac, with searchable history, collections, and a card-ba
 
 ## Download
 
-[**Download ClipShelf 0.9.6 for Mac**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.6/ClipShelf-0.9.6-macOS-arm64.dmg) · [ZIP download](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.6/ClipShelf-0.9.6-macOS-arm64.zip) · [Release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.6)
+[**Download ClipShelf 0.9.7 for Mac**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.7/ClipShelf-0.9.7-macOS-arm64.dmg) · [ZIP download](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.7/ClipShelf-0.9.7-macOS-arm64.zip) · [Release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.7)
 
 Requires **macOS 14 or later** and a Mac with **Apple silicon (M1 or later)**. Open the DMG and drag ClipShelf into Applications.
 
@@ -50,7 +50,7 @@ Select several cards to organize them together. Drop cards onto **+ Collections*
 
 ## Paste with fewer steps
 
-- **Quick Paste:** with the shelf open, press **⌘1–9** to paste a numbered card. Hold **⌘** to reveal the numbers.
+- **Quick Paste:** with the shelf open, press **⌘1–9** to paste a numbered card. Hold **⌘** to reveal the numbers. By default, numbering starts at the leftmost card that is more than half visible. Turn off **Number from Visible Cards** in Keyboard Shortcuts to number from the start of the list.
 - **Sequential Paste:** collect several items, then press **⌘V** in your destination app to paste them one at a time. Reverse the order or remove an item from the queue whenever needed.
 - **Plain text:** paste without formatting when that is what you need.
 - **Multiple selections:** copy, paste, organize, or delete several cards together.

@@ -68,6 +68,8 @@ struct OriginalSettingsTests {
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.ignoreConfidential && preferences.ignoreTransient)
         #expect(!preferences.linkPreviews && !preferences.mcpEnabled)
+        #expect(preferences.quickPasteFromVisibleCards)
+        preferences.quickPasteFromVisibleCards = false
         #expect(preferences.excludes("com.apple.Passwords"))
         preferences.retention = .week; preferences.pasteDestination = .clipboard
         preferences.alwaysPlainText = true; preferences.soundEnabled = false
@@ -79,6 +81,7 @@ struct OriginalSettingsTests {
         preferences.mcpEnabled = false
         #expect(firstEpoch != defaults.string(forKey: "mcpSessionEpoch"))
         let restored = Preferences(defaults: defaults)
+        #expect(!restored.quickPasteFromVisibleCards)
         #expect(restored.retention == .week && restored.pasteDestination == .clipboard)
         #expect(restored.alwaysPlainText && !restored.soundEnabled && !restored.ignoreTransient && !restored.showInScreenSharing)
         #expect(restored.binding(for: .activate) == nil)

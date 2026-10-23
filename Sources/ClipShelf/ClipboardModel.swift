@@ -210,6 +210,20 @@ final class ClipboardModel: ObservableObject {
         previewID = id
     }
     @Published var quickPasteHeld = false
+    private(set) var quickPasteVisibleRange = 0..<0
+    func updateQuickPasteVisibleRange(_ range: Range<Int>) {
+        let count = visible.count
+        let start = min(max(range.lowerBound, 0), count)
+        let end = min(max(range.upperBound, start), count)
+        let next = start..<min(end, start + 9)
+        guard quickPasteVisibleRange != next else { return }
+        // Scrolling without the modifier must not invalidate every card just to update hidden hints.
+        if quickPasteHeld && preferences.quickPasteFromVisibleCards { objectWillChange.send() }
+        quickPasteVisibleRange = next
+    }
+    private var quickPasteRange: Range<Int> {
+        preferences.quickPasteFromVisibleCards ? quickPasteVisibleRange : 0..<min(9, visible.count)
+    }
     @Published private(set) var commandHeld = false
     func updateQuickPasteModifier(_ flags: NSEvent.ModifierFlags) {
         let command = flags.contains(.command)
@@ -218,13 +232,19 @@ final class ClipboardModel: ObservableObject {
         if quickPasteHeld != held { quickPasteHeld = held }
     }
     func quickPasteNumber(at index: Int) -> Int? {
-        guard quickPasteHeld, (0..<9).contains(index), index < visible.count,
+        guard quickPasteHeld else { return nil }
+        let range = quickPasteRange
+        guard range.contains(index), index < visible.count,
               editingClipID == nil, renamingID == nil, !creatingBoard, editingBoardID == nil else { return nil }
-        return index + 1
+        return index - range.lowerBound + 1
     }
     func quickPasteClip(number: Int) -> Clip? {
-        guard (1...9).contains(number), number <= visible.count else { return nil }
-        return visible[number - 1]
+        let range = quickPasteRange
+        let index = range.lowerBound + number - 1
+        let clips = visible
+        guard (1...9).contains(number), range.contains(index), clips.indices.contains(index),
+              editingClipID == nil, renamingID == nil, !creatingBoard, editingBoardID == nil else { return nil }
+        return clips[index]
     }
     var selectedID: UUID? { selection.focusedID }
     var selectedClips: [Clip] { visible.filter { selection.ids.contains($0.id) } }

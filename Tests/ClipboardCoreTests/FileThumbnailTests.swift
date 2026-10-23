@@ -1,8 +1,36 @@
 import AppKit
+import SwiftUI
 import Testing
 @testable import ClipShelf
+@testable import ClipboardCore
 
 struct FileThumbnailTests {
+    @Test @MainActor func oversizedThumbnailsStayInsideTheFileCard() async throws {
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        let clip = Clip(kind: .files, text: "example-file-with-a-long-name.session", sourceName: "Test", sourceBundle: "test", items: [], identity: Data("file".utf8))
+        model.history = History(clips: [clip])
+        model.resetSelection()
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1180, height: 352), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let host = NSHostingView(rootView: ShelfView(model: model, dismiss: {}, openSettings: {}, enableCapture: {}, paste: { _, _ in }))
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+        func imageViews(_ view: NSView) -> [NSImageView] {
+            (view as? NSImageView).map { [$0] } ?? view.subviews.flatMap(imageViews)
+        }
+        let thumbnail = try #require(imageViews(host).first)
+        for size in [NSSize(width: 1024, height: 2048), NSSize(width: 2048, height: 1024)] {
+            thumbnail.image = NSImage(size: size)
+            host.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(50))
+            let frame = thumbnail.convert(thumbnail.bounds, to: host)
+            #expect(frame.width > 0 && frame.width <= 224)
+            #expect(frame.height > 0 && frame.height <= 208)
+            #expect(host.bounds.contains(frame))
+        }
+    }
     @Test func cacheInvalidatesWhenFileChangesAndSeparatesDisplayScales() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

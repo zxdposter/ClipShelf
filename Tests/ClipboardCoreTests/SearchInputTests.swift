@@ -6,6 +6,32 @@ import ClipboardCore
 @testable import ClipShelf
 
 struct SearchInputTests {
+    @Test @MainActor func searchExpansionKeepsTheNativeEditorAndComposition() async throws {
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1180, height: 352), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView = NSHostingView(rootView: ShelfView(model: model, dismiss: {}, openSettings: {}, enableCapture: {}, paste: { _, _ in }))
+        window.contentView?.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+        let field = try #require(model.searchField as? ShelfSearchField.SearchField)
+        #expect(field.bounds.width > 0)
+        model.searchShown = true
+        try await Task.sleep(for: .milliseconds(50))
+        field.focusForSearch()
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        editor.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        for shown in [false, true, false, true] {
+            model.searchShown = shown
+            try await Task.sleep(for: .milliseconds(30))
+            #expect(model.searchField === field)
+            #expect(field.currentEditor() === editor)
+            #expect(field.bounds.width > 0)
+            #expect(editor.hasMarkedText())
+        }
+        editor.unmarkText()
+        window.makeFirstResponder(nil)
+    }
     @Test @MainActor func rapidTypingOnlyRefreshesSearchInputUntilResultsArrive() async {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         let text = String(repeating: "long clipboard content ", count: 400)

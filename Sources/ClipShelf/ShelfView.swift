@@ -35,6 +35,7 @@ struct ShelfView: View {
         nonmutating set { _pendingBoardDelete.wrappedValue = newValue }
     }
     private var motion: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.20) }
+    private var searchMotion: Animation? { reduceMotion ? nil : .smooth(duration: model.searchShown ? 0.24 : 0.18, extraBounce: 0) }
     var body: some View {
         let clips = model.visible
         VStack(spacing: 0) {
@@ -63,7 +64,8 @@ struct ShelfView: View {
                             }
                         }.padding(.horizontal, ShelfCardLayout.inset).padding(.top, 12).padding(.bottom, 24)
                             .background(ShelfNavigationScroll(index: model.selectionScrollID.flatMap { id in clips.firstIndex { $0.id == id } },
-                                                              count: clips.count, presentationID: model.presentationID))
+                                                              count: clips.count, presentationID: model.presentationID,
+                                                              visibleRangeChanged: model.updateQuickPasteVisibleRange))
                     }.scrollIndicators(.hidden)
             }
         }
@@ -71,6 +73,7 @@ struct ShelfView: View {
         .clipShape(RoundedRectangle(cornerRadius: 22))
         .animation(motion, value: model.selectedBoardID)
         .animation(motion, value: model.history.boards)
+        .onReceive(model.preferences.$quickPasteFromVisibleCards.dropFirst()) { _ in model.objectWillChange.send() }
         .onChange(of: model.creatingBoard) { _, value in if !value { boardFocused = false } }
         .onChange(of: model.editingBoardID) { _, id in if id == nil { boardFocused = false } }
         .alert(L("新建收藏集"), isPresented: $model.namingDroppedBoard) {
@@ -131,14 +134,15 @@ struct ShelfView: View {
                 if model.demo { Button(L("启用采集"), action: enableCapture).font(.system(size: 11)).buttonStyle(.bordered) }
         }.frame(height: 36)
             .padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 2)
+            .animation(searchMotion, value: model.searchShown)
     }
     private func search(width: CGFloat) -> some View {
         SearchInputRegion(input: model.searchInput) {
-        HStack(spacing: model.searchShown ? 6 : 0) {
+        HStack(spacing: 6) {
             Button {
                 if !model.searchShown { model.searchShown = true }
                 (model.searchField as? ShelfSearchField.SearchField)?.focusForSearch()
-            } label: { Image(systemName: "magnifyingglass").font(.system(size: model.searchShown ? 15 : 20)).foregroundStyle(model.searchShown ? .secondary : .primary).frame(width: 30, height: 30) }
+            } label: { Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .medium)).scaleEffect(model.searchShown ? 1 : 1.18).foregroundStyle(model.searchShown ? .secondary : .primary).frame(width: 32, height: 32) }
                 .buttonStyle(ShelfHoverStyle()).accessibilityLabel(L("搜索")).help(L("搜索 (⌘F)"))
             if model.searchShown && !model.selectedSourceApps.isEmpty {
                 ViewThatFits(in: .horizontal) {
@@ -194,7 +198,8 @@ struct ShelfView: View {
                              register: { model.searchField = $0 },
                              changed: { if !model.searchShown { model.searchShown = true } },
                              focusChanged: { if model.searchFocused != $0 { model.searchFocused = $0 } }, moveSuggestion: model.moveSourceSuggestion)
-                .frame(width: model.searchShown ? nil : 0, height: 22)
+                .frame(height: 22)
+                .transaction { $0.animation = nil }
                 .opacity(model.searchShown ? 1 : 0)
                 .allowsHitTesting(model.searchShown).accessibilityHidden(!model.searchShown)
             if model.searchShown {
@@ -211,8 +216,10 @@ struct ShelfView: View {
                     }
             }
         }
-        .padding(.horizontal, model.searchShown ? 8 : 0).frame(width: model.searchShown ? width : 32, height: 32)
-        .animation(motion, value: model.searchShown)
+        // Reveal a stable-width editor instead of squeezing its native text layout during expansion.
+        .padding(.trailing, 8).frame(width: width, height: 32)
+        .frame(width: model.searchShown ? width : 32, height: 32, alignment: .leading)
+        .clipped()
         .contentShape(RoundedRectangle(cornerRadius: 9)).onTapGesture {
             if !model.searchShown { model.searchShown = true }
             (model.searchField as? ShelfSearchField.SearchField)?.focusForSearch()
@@ -220,6 +227,7 @@ struct ShelfView: View {
         .background(ShelfDesign.paper.opacity(model.searchShown ? 0.72 : 0), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ShelfDesign.accent.opacity(model.searchShown && model.searchFocused ? 0.24 : 0), lineWidth: 0.75))
         .shadow(color: .black.opacity(model.searchShown ? 0.035 : 0), radius: 3, y: 1)
+        .animation(searchMotion, value: model.searchShown)
         .overlay(alignment: .topLeading) {
             if model.searchShown && !model.suggestedSourceApps.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -545,7 +553,7 @@ private struct ClipCardContent: View, Equatable {
         } else if clip.kind == .files {
             VStack(alignment: .leading, spacing: 6) {
                 FileCardThumbnail(urls: filePreviewURLs(clip), refreshID: refreshID)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).clipped().allowsHitTesting(false)
                 Text(clip.text).font(.system(size: 11)).lineLimit(2).foregroundStyle(.secondary)
             }
         } else if let image {

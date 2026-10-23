@@ -100,6 +100,7 @@ struct SettingsView: View {
                 Button(L("重置")) {
                     for action in ShortcutAction.allCases { changeShortcut(action, action.defaultBinding) }
                     preferences.quickPasteModifier = .command; preferences.plainTextModifier = .shift
+                    preferences.quickPasteFromVisibleCards = true
                 }
                 Button(L("取消"), role: .cancel) {}
             }
@@ -274,6 +275,8 @@ struct SettingsView: View {
                     modifierMenu(L("快速粘贴"), selection: $preferences.quickPasteModifier)
                     Text("+ 1...9").font(.system(size: 13))
                 }.padding(.vertical, 8)
+                Divider()
+                toggle(L("从可见卡片开始编号"), subtitle: L("显示超过一半才算可见；关闭后从列表第一张编号。"), value: $preferences.quickPasteFromVisibleCards)
                 Divider()
                 HStack {
                     Text(L("纯文本模式")).font(.system(size: 13)); Spacer()

@@ -47,6 +47,10 @@ struct FileCardThumbnail: NSViewRepresentable {
         view.image = NSImage(systemSymbolName: "doc", accessibilityDescription: L("文件"))
         return view
     }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSImageView, context: Context) -> CGSize? {
+        // Quick Look images must not turn their intrinsic size into a card minimum size.
+        CGSize(width: proposal.width ?? 224, height: proposal.height ?? 116)
+    }
     func updateNSView(_ view: NSImageView, context: Context) {
         let coordinator = context.coordinator
         let scale = view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2

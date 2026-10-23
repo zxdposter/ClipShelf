@@ -93,6 +93,7 @@ final class Preferences: ObservableObject {
         defaults.set(mcpClients, forKey: "mcpClients"); defaults.synchronize()
     }
     @Published var quickPasteModifier: KeyModifier { didSet { defaults.set(quickPasteModifier.rawValue, forKey: "quickPasteModifier") } }
+    @Published var quickPasteFromVisibleCards: Bool { didSet { defaults.set(quickPasteFromVisibleCards, forKey: "quickPasteFromVisibleCards") } }
     @Published var plainTextModifier: KeyModifier { didSet { defaults.set(plainTextModifier.rawValue, forKey: "plainTextModifier") } }
     @Published private(set) var bindings: [String: KeyBinding]
     @Published private(set) var disabledBindings: [String]
@@ -135,6 +136,7 @@ final class Preferences: ObservableObject {
         mcpEnabled = defaults.bool(forKey: "mcpEnabled")
         mcpClients = defaults.dictionary(forKey: "mcpClients") as? [String: String] ?? [:]
         quickPasteModifier = KeyModifier(rawValue: defaults.string(forKey: "quickPasteModifier") ?? "") ?? .command
+        quickPasteFromVisibleCards = defaults.object(forKey: "quickPasteFromVisibleCards") as? Bool ?? true
         plainTextModifier = KeyModifier(rawValue: defaults.string(forKey: "plainTextModifier") ?? "") ?? .shift
         bindings = defaults.data(forKey: "keyBindings").flatMap { try? JSONDecoder().decode([String: KeyBinding].self, from: $0) } ?? [:]
         disabledBindings = defaults.stringArray(forKey: "disabledBindings") ?? []

@@ -99,6 +99,8 @@ final class AppLocalization: ObservableObject {
         "密码": "Passwords",
         "钥匙串访问": "Keychain Access",
         "快速粘贴": "Quick Paste",
+        "从可见卡片开始编号": "Number from Visible Cards",
+        "显示超过一半才算可见；关闭后从列表第一张编号。": "Cards count as visible when more than half is shown. Turn off to number from the start of the list.",
         "纯文本模式": "Plain Text Mode",
         "将快捷方式重置为默认…": "Reset Shortcuts to Defaults…",
         "不限": "Forever",

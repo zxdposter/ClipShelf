@@ -14,7 +14,7 @@
 
 ## 下载
 
-[**下载 ClipShelf 0.9.6 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.6/ClipShelf-0.9.6-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.6/ClipShelf-0.9.6-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.6)
+[**下载 ClipShelf 0.9.7 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.7/ClipShelf-0.9.7-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.7/ClipShelf-0.9.7-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.7)
 
 需要 **macOS 14 或更新版本**，以及搭载 **Apple 芯片（M1 或更新）** 的 Mac。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。
 
@@ -50,7 +50,7 @@ brew install --cask zxdposter/tap/clipshelf
 
 ## 更少操作，完成粘贴
 
-- **快速粘贴**：打开面板后，按 **⌘1–9** 粘贴对应卡片，按住 **⌘** 即可查看编号。
+- **快速粘贴**：打开面板后，按 **⌘1–9** 粘贴对应卡片，按住 **⌘** 即可查看编号。默认从最左侧显示超过一半的可见卡片开始编号；可在「键盘快捷键」中关闭「从可见卡片开始编号」，恢复从列表第一张编号。
 - **顺序粘贴**：先连续复制多个内容，再到目标应用按 **⌘V** 逐项粘贴。支持反转顺序或移除队列中的单项。
 - **纯文本粘贴**：需要时去掉文字格式，直接粘贴纯文本。
 - **多选操作**：多张卡片一起复制、粘贴、整理或删除。
