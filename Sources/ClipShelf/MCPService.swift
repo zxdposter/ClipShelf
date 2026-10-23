@@ -1,8 +1,18 @@
 import AppKit
+import Darwin
 import ClipboardCore
+import CryptoKit
 
-// Local stdio only. Every client session needs a fresh approval in the app UI.
+// Local stdio; named connections use revocable credentials, legacy clients approve each session.
 enum MCPService {
+    static let tokenEnvironmentKey = "CLIPSHELF_MCP_TOKEN"
+    static func credentialID(_ token: String) -> String {
+        SHA256.hash(data: Data(token.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    static func credentialAuthorized(_ token: String, defaults: UserDefaults) -> Bool {
+        !token.isEmpty && defaults.bool(forKey: "mcpEnabled") &&
+            defaults.dictionary(forKey: "mcpClients")?[credentialID(token)] is String
+    }
     static func response(_ request: [String: Any], history: History, authorized: Bool) -> [String: Any]? {
         guard let id = request["id"] else { return nil }
         func result(_ value: Any) -> [String: Any] { ["jsonrpc": "2.0", "id": id, "result": value] }
@@ -12,7 +22,7 @@ enum MCPService {
         case "initialize":
             let offered = (request["params"] as? [String: Any])?["protocolVersion"] as? String ?? "2025-03-26"
             let version = ["2024-11-05", "2025-03-26", "2025-06-18"].contains(offered) ? offered : "2025-03-26"
-            return result(["protocolVersion": version, "capabilities": ["tools": [:]], "serverInfo": ["name": "ClipShelf", "version": "0.4.0"]])
+            return result(["protocolVersion": version, "capabilities": ["tools": [:]], "serverInfo": ["name": "ClipShelf", "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.9.3"]])
         case "ping": return result([:])
         case "tools/list":
             return result(["tools": [
@@ -47,19 +57,31 @@ enum MCPService {
         }
     }
 
+    static func readChunk(from input: FileHandle) -> Data? {
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = Darwin.read(input.fileDescriptor, &buffer, buffer.count)
+            if count < 0 && errno == EINTR { continue }
+            guard count > 0 else { return nil }
+            return Data(buffer.prefix(count))
+        }
+    }
+
     @MainActor static func run() {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         var authorized = false
         var sessionEpoch: String?
         var pending = Data()
+        let token = ProcessInfo.processInfo.environment[tokenEnvironmentKey]
         func send(_ response: Any) {
             if let data = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) {
                 FileHandle.standardOutput.write(data + Data([10]))
             }
         }
         let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ClipShelf/history.plist")
-        while let chunk = try? FileHandle.standardInput.read(upToCount: 4096), !chunk.isEmpty {
+        // Read available pipe bytes without waiting for a full 4096-byte buffer.
+        while let chunk = readChunk(from: .standardInput) {
             pending.append(chunk)
             guard pending.count <= 1_048_576 else { break }
             while let newline = pending.firstIndex(of: 10) {
@@ -78,7 +100,10 @@ enum MCPService {
                 let enabled = UserDefaults.standard.bool(forKey: "mcpEnabled")
                 let epoch = UserDefaults.standard.string(forKey: "mcpSessionEpoch")
                 if epoch != sessionEpoch || !enabled { authorized = false; sessionEpoch = epoch }
-                if request["method"] as? String == "initialize", enabled, !authorized {
+                if let token {
+                    authorized = credentialAuthorized(token, defaults: .standard)
+                }
+                if token == nil, request["method"] as? String == "initialize", enabled, !authorized {
                     let info = (request["params"] as? [String: Any])?["clientInfo"] as? [String: Any]
                     let rawName = info?["name"] as? String ?? "AI 客户端"
                     let name = String(String.UnicodeScalarView(rawName.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })).prefix(100)

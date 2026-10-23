@@ -81,6 +81,15 @@ final class Preferences: ObservableObject {
     @Published var ignoreConfidential: Bool { didSet { defaults.set(ignoreConfidential, forKey: "ignoreConfidential") } }
     @Published var ignoreTransient: Bool { didSet { defaults.set(ignoreTransient, forKey: "ignoreTransient") } }
     @Published var mcpEnabled: Bool { didSet { defaults.set(mcpEnabled, forKey: "mcpEnabled"); defaults.set(UUID().uuidString, forKey: "mcpSessionEpoch"); defaults.synchronize() } }
+    @Published private(set) var mcpClients: [String: String]
+    func addMCPClient(name: String, token: String) {
+        mcpClients[MCPService.credentialID(token)] = name
+        defaults.set(mcpClients, forKey: "mcpClients"); defaults.synchronize()
+    }
+    func revokeMCPClient(_ id: String) {
+        mcpClients.removeValue(forKey: id)
+        defaults.set(mcpClients, forKey: "mcpClients"); defaults.synchronize()
+    }
     @Published var quickPasteModifier: KeyModifier { didSet { defaults.set(quickPasteModifier.rawValue, forKey: "quickPasteModifier") } }
     @Published var plainTextModifier: KeyModifier { didSet { defaults.set(plainTextModifier.rawValue, forKey: "plainTextModifier") } }
     @Published private(set) var bindings: [String: KeyBinding]
@@ -122,6 +131,7 @@ final class Preferences: ObservableObject {
         ignoreConfidential = defaults.object(forKey: "ignoreConfidential") as? Bool ?? true
         ignoreTransient = defaults.object(forKey: "ignoreTransient") as? Bool ?? true
         mcpEnabled = defaults.bool(forKey: "mcpEnabled")
+        mcpClients = defaults.dictionary(forKey: "mcpClients") as? [String: String] ?? [:]
         quickPasteModifier = KeyModifier(rawValue: defaults.string(forKey: "quickPasteModifier") ?? "") ?? .command
         plainTextModifier = KeyModifier(rawValue: defaults.string(forKey: "plainTextModifier") ?? "") ?? .shift
         bindings = defaults.data(forKey: "keyBindings").flatMap { try? JSONDecoder().decode([String: KeyBinding].self, from: $0) } ?? [:]

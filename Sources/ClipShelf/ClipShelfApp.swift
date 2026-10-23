@@ -9,6 +9,11 @@ import ClipboardCore
 @main
 struct ClipShelfApp {
     @MainActor static func main() {
+        if CommandLine.arguments.contains("--check-accessibility") {
+            let trusted = AXIsProcessTrusted()
+            print(trusted ? "Accessibility: granted" : "Accessibility: not granted")
+            exit(trusted ? 0 : 1)
+        }
         if CommandLine.arguments.contains("--mcp") { MCPService.run(); return }
         let app = NSApplication.shared
         let delegate = AppDelegate()

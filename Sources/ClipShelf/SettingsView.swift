@@ -106,7 +106,7 @@ struct SettingsView: View {
             .alert(L("ClipShelf 使用帮助"), isPresented: $state.helpShown) {
                 Button(L("好"), role: .cancel) {}
             } message: {
-                Text(L("使用设定的快捷键唤醒；单击选择，⌘点击增减选择，Shift 连选，⌘A 全选。回车或双击粘贴。⌘F 搜索，Esc 退出搜索或收起。拖动卡片到 Pinboard 收藏。智能页的 MCP 仅通过本机 stdio 连接，每次会话需要批准。"))
+                Text(L("使用设定的快捷键唤醒；单击选择，⌘点击增减选择，Shift 连选，⌘A 全选。回车或双击粘贴。⌘F 搜索，Esc 退出搜索或收起。拖动卡片到 Pinboard 收藏。智能页可授权或撤销 MCP 客户端，本机 stdio 连接支持持久凭证；旧配置每次会话需要批准。"))
             }
     }
 
@@ -210,7 +210,13 @@ struct SettingsView: View {
                 toggle(L("启用 MCP"), subtitle: L("允许 AI 应用连接到 ClipShelf。只有经你批准的应用才能访问你的剪贴板内容和收藏集。"), value: $preferences.mcpEnabled)
                 if preferences.mcpEnabled {
                     Divider()
-                    HStack { Text(L("每个客户端会话均需批准")).font(.system(size: 11)).foregroundStyle(.secondary); Spacer(); Button(L("复制连接配置"), action: copyMCPConfiguration) }.padding(.vertical, 10)
+                    HStack { Text(L("生成配置即授权，可随时撤销")).font(.system(size: 11)).foregroundStyle(.secondary); Spacer(); Button(L("复制连接配置"), action: copyMCPConfiguration) }.padding(.vertical, 10)
+                    ForEach(preferences.mcpClients.keys.sorted(), id: \.self) { id in
+                        HStack {
+                            Text(preferences.mcpClients[id] ?? ""); Spacer()
+                            Button(L("撤销访问")) { preferences.revokeMCPClient(id) }
+                        }.padding(.vertical, 6)
+                    }
                 }
             }
         }
@@ -322,10 +328,26 @@ struct SettingsView: View {
         }
     }
     private func copyMCPConfiguration() {
+        let alert = NSAlert()
+        alert.messageText = L("授权 AI 工具")
+        alert.informativeText = L("配置含访问凭证，请仅交给指定工具。撤销后该配置立即失效。")
+        let field = NSTextField(string: "AI Tool")
+        field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: L("授权并复制")); alert.addButton(withTitle: L("取消"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = String(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).prefix(100))
+        guard !name.isEmpty else { return }
+        let token = UUID().uuidString + UUID().uuidString
         guard let executable = Bundle.main.executableURL?.path,
-              let data = try? JSONSerialization.data(withJSONObject: ["mcpServers": ["ClipShelf": ["command": executable, "args": ["--mcp"]]]], options: [.prettyPrinted, .sortedKeys]),
+              let data = try? JSONSerialization.data(withJSONObject: ["mcpServers": ["ClipShelf": ["command": executable, "args": ["--mcp"], "env": [MCPService.tokenEnvironmentKey: token]]]], options: [.prettyPrinted, .sortedKeys]),
               let string = String(data: data, encoding: .utf8) else { return }
-        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(string, forType: .string)
+        preferences.addMCPClient(name: name, token: token)
+        let item = NSPasteboardItem()
+        item.setString(string, forType: .string)
+        item.setString("1", forType: .init("local.clipshelf.credential"))
+        item.setString("1", forType: .init("org.nspasteboard.ConcealedType"))
+        NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects([item])
     }
 }
 

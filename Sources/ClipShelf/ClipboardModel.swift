@@ -326,7 +326,7 @@ final class ClipboardModel: ObservableObject {
     }
 
     init(demo: Bool = false, pasteboard: NSPasteboard = .general, storageURL: URL? = nil, preferences: Preferences? = nil, searchIndex: (any ClipboardSearchIndex)? = nil) {
-        self.searchIndex = searchIndex ?? (storageURL == nil && !demo ? SpotlightSearchIndex(manifestURL: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ClipShelf/search-index-v1.plist")) as any ClipboardSearchIndex : MemorySearchIndex())
+        self.searchIndex = searchIndex ?? MemorySearchIndex()
         self.preferences = preferences ?? Preferences()
         self.demo = demo
         self.pasteboard = pasteboard
@@ -358,6 +358,7 @@ final class ClipboardModel: ObservableObject {
     func capture(expectedChange: Int, source: NSRunningApplication? = NSWorkspace.shared.frontmostApplication) {
         let bundle = source?.bundleIdentifier ?? ""
         guard !preferences.excludes(bundle), let rawItems = pasteboard.pasteboardItems, !rawItems.isEmpty else { return }
+        guard !rawItems.contains(where: { $0.types.contains(.init("local.clipshelf.credential")) }) else { return }
         let allowed: Set<String> = [NSPasteboard.PasteboardType.string.rawValue, "public.utf16-plain-text",
             "public.text", "public.url", "public.file-url", "public.png", "public.tiff", "public.rtf", "public.html"]
         var total = 0

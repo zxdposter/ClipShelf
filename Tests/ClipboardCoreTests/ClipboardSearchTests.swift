@@ -33,6 +33,26 @@ struct ClipboardSearchTests {
         await index.synchronize([])
         #expect(try await index.search("needle").isEmpty)
     }
+    @Test @MainActor func defaultSearchFindsLiteralTextLinksAndLongContent() async {
+        let plain = clip("claude-mem")
+        let link = clip("https://github.com/thedotmack/claude-mem")
+        let long = clip(String(repeating: "正文", count: 30000) + " CLAUDE-MEM", title: "历史记录")
+        let punctuation = clip("路径 /tmp/a_b.swift?value=* 中文片段")
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        model.history = History(clips: [plain, link, long, punctuation])
+        await model.waitForIndex()
+        for query in ["claude-mem", "CLAUDE-MEM", "aude-me"] {
+            model.query = query
+            await model.waitForSearch()
+            #expect(Set(model.visible.map(\.id)) == [plain.id, link.id, long.id])
+        }
+        model.query = "历史记录 claude-mem 来源"
+        await model.waitForSearch()
+        #expect(model.visible.map(\.id) == [long.id])
+        model.query = "/tmp/a_b.swift?value=* 中文片段"
+        await model.waitForSearch()
+        #expect(model.visible.map(\.id) == [punctuation.id])
+    }
     @Test @MainActor func searchRemainsAvailableWhileTheFirstIndexIsBuilding() async throws {
         let index = BuildingIndex()
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), searchIndex: index)

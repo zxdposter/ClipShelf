@@ -6,9 +6,38 @@ import Testing
 @testable import ClipShelf
 
 struct OriginalSettingsTests {
+    @Test @MainActor func mcpCredentialsPersistAndRevokeIndependently() throws {
+        let suite = "ClipShelf-MCP-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.mcpEnabled = true
+        preferences.addMCPClient(name: "Harness", token: "first")
+        preferences.addMCPClient(name: "Other", token: "second")
+        #expect(Preferences(defaults: defaults).mcpClients.count == 2)
+        #expect(MCPService.credentialAuthorized("first", defaults: defaults))
+        #expect(!MCPService.credentialAuthorized("forged", defaults: defaults))
+        preferences.revokeMCPClient(MCPService.credentialID("first"))
+        #expect(!MCPService.credentialAuthorized("first", defaults: defaults))
+        #expect(MCPService.credentialAuthorized("second", defaults: defaults))
+        preferences.mcpEnabled = false
+        #expect(!MCPService.credentialAuthorized("second", defaults: defaults))
+    }
     private func clip(_ text: String, date: Date = Date()) -> Clip {
         Clip(kind: .text, text: text, sourceName: "test", sourceBundle: "test.app",
              items: [[Representation(type: "public.utf8-plain-text", data: Data(text.utf8)), Representation(type: "public.rtf", data: Data("{\\rtf1 test}".utf8))]], identity: Data(text.utf8), copiedAt: date)
+    }
+    @Test func mcpReadsShortRequestsBeforeClientClosesInput() throws {
+        let pipe = Pipe()
+        let request = Data("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n".utf8)
+        try pipe.fileHandleForWriting.write(contentsOf: request)
+        let writer = pipe.fileHandleForWriting
+        // Unblock a regression instead of hanging the test suite indefinitely.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { try? writer.close() }
+        let start = Date()
+        #expect(MCPService.readChunk(from: pipe.fileHandleForReading) == request)
+        #expect(Date().timeIntervalSince(start) < 0.5)
+        try pipe.fileHandleForReading.close()
     }
     @Test func retentionExpiresOnlyUnpinnedItems() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -69,6 +98,12 @@ struct OriginalSettingsTests {
         board.writeObjects([concealed]); model.capture(expectedChange: board.changeCount)
         #expect(model.history.clips.isEmpty)
         preferences.ignoreConfidential = false
+        model.capture(expectedChange: board.changeCount)
+        #expect(model.history.clips.count == 1)
+        let credential = NSPasteboardItem()
+        credential.setString("test credential", forType: .string)
+        credential.setString("1", forType: .init("local.clipshelf.credential"))
+        board.clearContents(); board.writeObjects([credential])
         model.capture(expectedChange: board.changeCount)
         #expect(model.history.clips.count == 1)
         let item = clip("plain")

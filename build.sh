@@ -3,6 +3,12 @@ set -euo pipefail
 project_dir="$(cd "$(dirname "$0")" && pwd)"
 output_dir="${1:-$project_dir/dist}"
 build_dir="${CLIPSHELF_BUILD_DIR:-$project_dir/.build}"
+signing_identity="E6124AB6C7079D7F1E764992CA61167210660010"
+signing_requirement="identifier \"local.clipshelf.app\" and certificate leaf = H\"$signing_identity\""
+if ! security find-identity -v -p codesigning | grep -Fq "$signing_identity"; then
+    echo "ClipShelf Release Signing certificate and private key are required; see signing/README.md." >&2
+    exit 1
+fi
 mkdir -p "$output_dir"
 swift build --package-path "$project_dir" -c release --scratch-path "$build_dir"
 binary_dir="$(swift build --package-path "$project_dir" -c release --scratch-path "$build_dir" --show-bin-path)"
@@ -22,12 +28,13 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
 <key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
 <key>CFBundleLocalizations</key><array><string>zh-Hans</string><string>en</string></array>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.9.2</string>
-<key>CFBundleVersion</key><string>26</string>
+<key>CFBundleShortVersionString</key><string>0.9.3</string>
+<key>CFBundleVersion</key><string>27</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-codesign --force --sign - "$app_dir"
+codesign --force --sign "$signing_identity" --timestamp=none --requirements "=designated => $signing_requirement" "$app_dir"
+codesign --verify --deep --strict --test-requirement "=$signing_requirement" "$app_dir"
 printf '%s\n' "Built: $app_dir"

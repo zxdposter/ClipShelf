@@ -14,7 +14,7 @@
 
 ## 下载
 
-[**下载 ClipShelf 0.9.2 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.2/ClipShelf-0.9.2-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.2/ClipShelf-0.9.2-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.2)
+[**下载 ClipShelf 0.9.3 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.3/ClipShelf-0.9.3-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.3/ClipShelf-0.9.3-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.3)
 
 需要 **macOS 14 或更新版本**，以及搭载 **Apple 芯片（M1 或更新）** 的 Mac。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。
 
