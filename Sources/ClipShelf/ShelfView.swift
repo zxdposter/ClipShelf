@@ -48,9 +48,8 @@ struct ShelfView: View {
                     Text(!model.searchActive ? L("复制文字、图片或文件，即可开始收集") : L("试试更短的关键词，或切换内容类型")).font(.system(size: 12)).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity) }
             } else {
-                ScrollViewReader { proxy in
                     ScrollView(.horizontal) {
-                        LazyHStack(spacing: 16) {
+                        LazyHStack(spacing: ShelfCardLayout.spacing) {
                             ForEach(Array(clips.enumerated()), id: \.element.id) { index, clip in
                                 ClipCard(clip: clip, quickPasteNumber: model.quickPasteNumber(at: index), selected: model.selection.ids.contains(clip.id),
                                          model: model, language: localization.language,
@@ -62,14 +61,10 @@ struct ShelfView: View {
                                             .background(PreviewPrivacy(visible: model.preferences.showInScreenSharing))
                                     }.id(clip.id)
                             }
-                        }.padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 24).id("history-start")
+                        }.padding(.horizontal, ShelfCardLayout.inset).padding(.top, 12).padding(.bottom, 24)
+                            .background(ShelfNavigationScroll(index: model.selectionScrollID.flatMap { id in clips.firstIndex { $0.id == id } },
+                                                              count: clips.count, presentationID: model.presentationID))
                     }.scrollIndicators(.hidden)
-                        .onChange(of: model.selectionScrollID) { _, id in if let id { withAnimation(model.searchShown ? nil : motion) {
-                            if id == model.visible.first?.id { proxy.scrollTo("history-start", anchor: .leading) }
-                            else { proxy.scrollTo(id) }
-                        } } }
-                        .onChange(of: model.presentationID) { _, _ in proxy.scrollTo("history-start", anchor: .leading) }
-                }
             }
         }
         .foregroundStyle(Color.primary).tint(ShelfDesign.accent).background { ShelfGlassBackground() }
@@ -383,15 +378,38 @@ private struct SearchInputRegion<Content: View>: View {
     }
 }
 
-private struct ClipCard: View {
+struct ClipCardFaceState: Equatable {
     let clip: Clip
     let quickPasteNumber: Int?
     let selected: Bool
-    @ObservedObject var model: ClipboardModel
     let language: AppLanguage
-    let copy: () -> Void
-    let pastePlain: () -> Void
-    let remove: () -> Void
+    let commandHeld: Bool
+    let renaming: Bool
+    let renameDraft: String
+    let linkPreviews: Bool
+    let refreshID: UUID
+
+    @MainActor init(clip: Clip, quickPasteNumber: Int?, selected: Bool, model: ClipboardModel, language: AppLanguage) {
+        self.clip = clip
+        self.quickPasteNumber = quickPasteNumber
+        self.selected = selected
+        self.language = language
+        commandHeld = model.commandHeld
+        renaming = model.renamingID == clip.id
+        renameDraft = renaming ? model.renameDraft : ""
+        linkPreviews = model.preferences.linkPreviews
+        refreshID = model.presentationID
+    }
+}
+
+private struct ClipCardFace: View, Equatable {
+    let state: ClipCardFaceState
+    let model: ClipboardModel
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.model === rhs.model && lhs.state == rhs.state }
+    private var clip: Clip { state.clip }
+    private var quickPasteNumber: Int? { state.quickPasteNumber }
+    private var selected: Bool { state.selected }
+    private var language: AppLanguage { state.language }
     @FocusState private var renameFocused: Bool
     private var appearance: SourceAppearance { SourceAppearance.forApp(clip.sourceBundle, fallback: clip.kind.symbol) }
     private func relativeTime(_ now: Date) -> String {
@@ -401,18 +419,18 @@ private struct ClipCard: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-                if model.renamingID == clip.id {
-                        TextField(L("名称"), text: $model.renameDraft).textFieldStyle(.plain).focused($renameFocused)
+                if state.renaming {
+                        TextField(L("名称"), text: Binding(get: { model.renameDraft }, set: { model.renameDraft = $0 })).textFieldStyle(.plain).focused($renameFocused)
                             .onSubmit { model.finishRename() }.onAppear { renameFocused = true }
                             .onChange(of: renameFocused) { _, focused in if !focused && model.renamingID == clip.id { model.finishRename() } }
                 } else if let title = clip.title {
                     Text(title).font(.system(size: 11, weight: .medium)).lineLimit(1)
                 }
-                ClipCardContent(clip: clip, linkPreviews: model.preferences.linkPreviews, refreshID: model.presentationID)
+                ClipCardContent(clip: clip, linkPreviews: state.linkPreviews, refreshID: state.refreshID)
                     .equatable().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 ClipCardFooter(clip: clip, quickPasteNumber: quickPasteNumber, language: language).equatable()
                     .offset(y: 4)
-            }.padding(16).frame(width: 256, height: 268)
+            }.padding(16).frame(width: ShelfCardLayout.width, height: 268)
                 .background {
                     RoundedRectangle(cornerRadius: 16).fill(ShelfDesign.card)
                         .overlay {
@@ -427,7 +445,7 @@ private struct ClipCard: View {
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(selected ? ShelfDesign.selection : .clear, lineWidth: 1.5))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(selected ? ShelfDesign.selection.opacity(0.12) : .clear, lineWidth: 3).padding(-2))
                 .overlay(alignment: .topTrailing) {
-                    if model.commandHeld {
+                    if state.commandHeld {
                         TimelineView(.periodic(from: .now, by: 60)) { context in
                             Text(relativeTime(context.date)).font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 5)
@@ -436,6 +454,21 @@ private struct ClipCard: View {
                     }
                 }
                 .shadow(color: .black.opacity(selected ? 0.12 : 0.065), radius: selected ? 12 : 8, y: selected ? 5 : 3)
+    }
+}
+
+private struct ClipCard: View {
+    let clip: Clip
+    let quickPasteNumber: Int?
+    let selected: Bool
+    @ObservedObject var model: ClipboardModel
+    let language: AppLanguage
+    let copy: () -> Void
+    let pastePlain: () -> Void
+    let remove: () -> Void
+    var body: some View {
+        ClipCardFace(state: ClipCardFaceState(clip: clip, quickPasteNumber: quickPasteNumber, selected: selected, model: model, language: language), model: model)
+            .equatable()
             .contentShape(RoundedRectangle(cornerRadius: 16))
             // A Button consumes mouse tracking before the native drag source can start.
             .onDrag { NSItemProvider(object: model.dragPayload(for: clip) as NSString) } preview: {

@@ -1,9 +1,75 @@
 import AppKit
 import Testing
+import SwiftUI
 @testable import ClipShelf
 @testable import ClipboardCore
 
 struct QuickPasteHintTests {
+    @Test @MainActor func keyboardScrollReachesNativeViewport() async throws {
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        model.history = History(clips: (0..<200).map { index in
+            Clip(kind: .text, text: String(index), sourceName: "Test", sourceBundle: "test", items: [], identity: Data(String(index).utf8))
+        })
+        model.resetSelection()
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1180, height: 352), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView = NSHostingView(rootView: ShelfView(model: model, dismiss: {}, openSettings: {}, enableCapture: {}, paste: { _, _ in }))
+        window.contentView?.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(150))
+        for _ in 0..<50 { model.moveSelection(1) }
+        try await Task.sleep(for: .milliseconds(150))
+        func findScrolls(_ view: NSView) -> [NSScrollView] {
+            (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(findScrolls)
+        }
+        let scroll = try #require(findScrolls(window.contentView!).first { ($0.documentView?.frame.width ?? 0) > 10000 })
+        #expect(scroll.contentView.bounds.minX > 12000)
+        let index = try #require(model.visible.firstIndex { $0.id == model.selectedID })
+        let left = ShelfCardLayout.inset + CGFloat(index) * (ShelfCardLayout.width + ShelfCardLayout.spacing)
+        #expect(left >= scroll.contentView.bounds.minX)
+        #expect(left + ShelfCardLayout.width <= scroll.contentView.bounds.maxX)
+    }
+    @Test func keyboardScrollOnlyMovesCardsOutsideTheViewport() {
+        let viewport = CGRect(x: 0, y: 0, width: 1000, height: 300)
+        #expect(ShelfCardLayout.navigationOffset(index: 0, count: 200, viewport: viewport) == 0)
+        #expect(ShelfCardLayout.navigationOffset(index: 2, count: 200, viewport: viewport) == 0)
+        #expect(ShelfCardLayout.navigationOffset(index: 3, count: 200, viewport: viewport) == 120)
+        let scrolled = CGRect(x: 120, y: 0, width: 1000, height: 300)
+        #expect(ShelfCardLayout.navigationOffset(index: 3, count: 200, viewport: scrolled) == 120)
+        #expect(ShelfCardLayout.navigationOffset(index: 0, count: 200, viewport: scrolled) == 0)
+        #expect(ShelfCardLayout.navigationOffset(index: 199, count: 200, viewport: viewport) == 53432)
+        #expect(ShelfCardLayout.navigationOffset(index: 0, count: 1, viewport: scrolled) == 0)
+        #expect(ShelfCardLayout.navigationOffset(index: 0, count: 0, viewport: scrolled) == 120)
+        #expect(ShelfCardLayout.navigationOffset(index: -1, count: 200, viewport: scrolled) == 120)
+        #expect(ShelfCardLayout.navigationOffset(index: 1, count: 200, viewport: CGRect(x: 0, y: 0, width: 200, height: 300)) == 272)
+    }
+    @Test @MainActor func keyboardNavigationInvalidatesOnlyChangedCardFaces() {
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        let text = String(repeating: "long clipboard content ", count: 400)
+        let clips = (0..<200).map { index in
+            Clip(kind: .text, text: "\(index) \(text)", sourceName: "Test", sourceBundle: "test", items: [], identity: Data("\(index)".utf8))
+        }
+        model.history = History(clips: clips)
+        model.resetSelection()
+        func faces() -> [ClipCardFaceState] {
+            clips.map { ClipCardFaceState(clip: $0, quickPasteNumber: nil, selected: model.selection.ids.contains($0.id), model: model, language: .chinese) }
+        }
+        var previous = faces()
+        for _ in 0..<50 {
+            model.moveSelection(1)
+            let next = faces()
+            #expect(zip(previous, next).filter { $0 != $1 }.count == 2)
+            previous = next
+        }
+        #expect(model.selectedID == clips[50].id)
+        model.renamingID = clips[0].id
+        model.renameDraft = "renamed"
+        let renaming = faces()
+        #expect(previous[0] != renaming[0])
+        #expect(previous[100] == renaming[100])
+        model.renameDraft = "updated"
+        #expect(renaming[0] != faces()[0])
+    }
     @Test @MainActor func hintsTrackModifierAndVisibleOrder() async throws {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         #expect(model.quickPasteNumber(at: 0) == nil)
