@@ -22,7 +22,7 @@ enum MCPService {
         case "initialize":
             let offered = (request["params"] as? [String: Any])?["protocolVersion"] as? String ?? "2025-03-26"
             let version = ["2024-11-05", "2025-03-26", "2025-06-18"].contains(offered) ? offered : "2025-03-26"
-            return result(["protocolVersion": version, "capabilities": ["tools": [:]], "serverInfo": ["name": "ClipShelf", "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.9.3"]])
+            return result(["protocolVersion": version, "capabilities": ["tools": [:]], "serverInfo": ["name": "ClipShelf", "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.9.4"]])
         case "ping": return result([:])
         case "tools/list":
             return result(["tools": [

@@ -21,14 +21,42 @@ protocol ClipboardSearchIndex: Actor {
 }
 
 actor MemorySearchIndex: ClipboardSearchIndex {
-    private var documents: [SearchDocument] = []
-    func synchronize(_ documents: [SearchDocument]) { self.documents = documents }
+    private struct IndexedDocument {
+        let document: SearchDocument
+        let pinyin: [String]
+        init(_ document: SearchDocument) {
+            self.document = document
+            // shortcut: use the system reading; add heteronyms if alternate pronunciations are needed.
+            pinyin = [document.text, document.title, document.source].flatMap { value -> [String] in
+                guard value.range(of: "\\p{Han}", options: .regularExpression) != nil,
+                      let latin = value.applyingTransform(.mandarinToLatin, reverse: false) else { return [] }
+                let syllables = latin.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "zh_CN"))
+                    .split(whereSeparator: \.isWhitespace)
+                return [syllables.joined(), String(syllables.compactMap(\.first))]
+            }
+        }
+        func matches(_ terms: [String]) -> Bool {
+            terms.allSatisfy { term in
+                document.matches([term]) || pinyin.contains { $0.localizedStandardContains(term) }
+            }
+        }
+    }
+    private var documents: [UUID: IndexedDocument] = [:]
+    func synchronize(_ snapshot: [SearchDocument]) throws {
+        var next: [UUID: IndexedDocument] = [:]
+        for document in snapshot {
+            try Task.checkCancellation()
+            if let cached = documents[document.id], cached.document == document { next[document.id] = cached }
+            else { next[document.id] = IndexedDocument(document) }
+        }
+        documents = next
+    }
     func search(_ query: String) throws -> Set<UUID> {
         let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
         var ids = Set<UUID>()
-        for document in documents {
+        for entry in documents.values {
             try Task.checkCancellation()
-            if document.matches(terms) { ids.insert(document.id) }
+            if entry.matches(terms) { ids.insert(entry.document.id) }
         }
         return ids
     }

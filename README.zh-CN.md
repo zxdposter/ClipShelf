@@ -14,7 +14,7 @@
 
 ## 下载
 
-[**下载 ClipShelf 0.9.3 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.3/ClipShelf-0.9.3-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.3/ClipShelf-0.9.3-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.3)
+[**下载 ClipShelf 0.9.4 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.4/ClipShelf-0.9.4-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.4/ClipShelf-0.9.4-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.4)
 
 需要 **macOS 14 或更新版本**，以及搭载 **Apple 芯片（M1 或更新）** 的 Mac。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。
 
@@ -36,7 +36,7 @@ brew install --cask zxdposter/tap/clipshelf
 
 - **剪贴板历史**：集中保存最近复制的内容，不再被下一次复制覆盖。
 - **自动去重**：再次复制相同内容时，将原有卡片移到最前面。
-- **搜索与筛选**：按内容、保存的标题或来源应用查找，也可按内容类型筛选。
+- **搜索与筛选**：按内容、保存的标题或来源应用查找；中文支持全拼与首字母（如用 `zhongwen` 或 `zw` 搜索「中文」），也可按内容类型筛选。
 - **保留文字格式**：卡片直接展示格式文本、图片和文件缩略图。
 - **空格预览**：粘贴前先查看完整文字、图片或文件。
 - **辨认来源**：通过 App 图标和卡片底部的颜色，快速识别内容来自哪里。

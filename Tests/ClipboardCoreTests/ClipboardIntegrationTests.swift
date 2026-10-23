@@ -83,7 +83,7 @@ struct ClipboardIntegrationTests {
         #expect(model.history.clips.first?.id == originalID)
         model.query = "测试 hello"
         await model.waitForSearch()
-        #expect(model.visible.count == 1)
+        #expect(model.visible.count == 1, "query=\(model.query), pending=\(model.searchPending), applied=\(model.hasSearchResults), matches=\(model.searchMatches), error=\(model.searchError ?? "none")")
         let clip = try #require(model.visible.first)
         model.copy(clip)
         #expect(board.string(forType: .string) == "测试剪贴板 hello")

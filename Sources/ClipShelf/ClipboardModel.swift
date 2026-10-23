@@ -8,6 +8,7 @@ final class ClipboardModel: ObservableObject {
     @Published var query = "" { didSet { if query != oldValue { scheduleSearch() } } }
     @Published private(set) var searchMatches = Set<UUID>()
     @Published private(set) var searchPending = false
+    @Published private(set) var hasSearchResults = false
     private let searchIndex: any ClipboardSearchIndex
     private var indexTask: Task<Bool, Never>?
     private var indexRevision = 0
@@ -38,18 +39,20 @@ final class ClipboardModel: ObservableObject {
         }
         let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
+            hasSearchResults = false
             if searchPending { searchPending = false }
             if !searchMatches.isEmpty { searchMatches = [] }
+            if !indexChanged { resetSelection() }
             return
         }
         if !searchPending { searchPending = true }
-        if !searchMatches.isEmpty { searchMatches = [] }
-        let indexed = readyRevision == indexRevision
         let index = searchIndex
-        let snapshot = history.clips.map(SearchDocument.init)
         searchTask = Task(priority: .userInitiated) { [weak self] in
-            guard !Task.isCancelled else { return }
             do {
+                try await Task.sleep(for: .milliseconds(120))
+                guard let self, self.searchRevision == revision else { return }
+                let indexed = self.readyRevision == self.indexRevision
+                let snapshot = self.history.clips.map(SearchDocument.init)
                 let ids: Set<UUID>
                 var failure = indexed ? nil : "Spotlight index unavailable; background search used"
                 if indexed {
@@ -58,17 +61,18 @@ final class ClipboardModel: ObservableObject {
                         try Task.checkCancellation()
                         failure = "Spotlight query failed; background search used: \(error.localizedDescription)"
                         let fallback = MemorySearchIndex()
-                        await fallback.synchronize(snapshot)
+                        try await fallback.synchronize(snapshot)
                         ids = try await fallback.search(value)
                     }
                 } else {
                     let fallback = MemorySearchIndex()
-                    await fallback.synchronize(snapshot)
+                    try await fallback.synchronize(snapshot)
                     ids = try await fallback.search(value)
                 }
-                guard !Task.isCancelled, let self, self.searchRevision == revision else { return }
+                guard !Task.isCancelled, self.searchRevision == revision else { return }
                 self.searchError = failure
-                self.searchMatches = ids
+                self.hasSearchResults = true
+                if self.searchMatches != ids { self.searchMatches = ids }
                 self.searchPending = false
                 self.resetSelection()
             } catch {
@@ -78,7 +82,13 @@ final class ClipboardModel: ObservableObject {
             }
         }
     }
-    func waitForSearch() async { await searchTask?.value }
+    func waitForSearch() async {
+        while let task = searchTask {
+            let revision = searchRevision
+            await task.value
+            if revision == searchRevision { return }
+        }
+    }
     func waitForIndex() async { _ = await indexTask?.value }
     weak var searchField: NSTextField?
     @Published var filter: ClipKind?
@@ -235,7 +245,7 @@ final class ClipboardModel: ObservableObject {
             let byID = Dictionary(uniqueKeysWithValues: history.clips.map { ($0.id, $0) })
             clips = board.clipIDs.compactMap { byID[$0] }
         } else { clips = history.clips }
-        let searching = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let searching = hasSearchResults && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return clips.filter { (filter == nil || $0.kind == filter) && (!searching || searchMatches.contains($0.id)) }
     }
     func clearSearch() {

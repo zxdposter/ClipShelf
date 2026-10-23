@@ -66,7 +66,6 @@ struct ShelfView: View {
         .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(LinearGradient(colors: [ShelfDesign.edge, ShelfDesign.line], startPoint: .top, endPoint: .bottom), lineWidth: 1))
         .animation(motion, value: model.selectedBoardID)
         .animation(motion, value: model.history.boards)
-        .onChange(of: model.query) { _, _ in model.resetSelection() }
         .onChange(of: model.filter) { _, _ in model.resetSelection() }
         .onChange(of: model.creatingBoard) { _, value in if !value { boardFocused = false } }
         .onChange(of: model.editingBoardID) { _, id in if id == nil { boardFocused = false } }

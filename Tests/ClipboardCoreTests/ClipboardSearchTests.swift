@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Testing
 @testable import ClipboardCore
 @testable import ClipShelf
@@ -27,10 +28,10 @@ struct ClipboardSearchTests {
     @Test func backgroundSearchPreservesTermsSourceTitleAndUpdates() async throws {
         let index = MemorySearchIndex()
         let long = clip(String(repeating: "长文本", count: 30000) + " 尾部needle", title: "特别标题")
-        await index.synchronize([SearchDocument(long)])
+        try await index.synchronize([SearchDocument(long)])
         #expect(try await index.search("尾部needle 特别 来源") == [long.id])
         #expect(try await index.search("不存在").isEmpty)
-        await index.synchronize([])
+        try await index.synchronize([])
         #expect(try await index.search("needle").isEmpty)
     }
     @Test @MainActor func defaultSearchFindsLiteralTextLinksAndLongContent() async {
@@ -63,6 +64,63 @@ struct ClipboardSearchTests {
         await index.finishBuilding()
         await model.waitForIndex()
     }
+    @Test @MainActor func pinyinSearchFindsChineseTextTitlesAndSources() async throws {
+        _ = NSApplication.shared
+        let text = clip("中文搜索，支持剪贴板")
+        let title = clip("project notes", title: "项目计划")
+        let mixed = clip("微信Mac 版本")
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        model.history = History(clips: [text, title, mixed])
+        await model.waitForIndex()
+        for query in ["zhongwen", "ZHONGWEN", "zhōngwén", "zwss", "jiantieban", "jtb", "zhong wen", "中文 jtb"] {
+            model.query = query
+            await model.waitForSearch()
+            #expect(model.visible.map(\.id) == [text.id], "query: \(query)")
+        }
+        for query in ["xiangmujihua", "xmjh", "project xmjh"] {
+            model.query = query
+            await model.waitForSearch()
+            #expect(model.visible.map(\.id) == [title.id])
+        }
+        model.query = "weixinMac"
+        await model.waitForSearch()
+        #expect(model.visible.map(\.id) == [mixed.id])
+        model.query = "ceshilaiyuan"
+        await model.waitForSearch()
+        #expect(model.visible.count == 3)
+        model.beginRename(title); model.renameDraft = "会议纪要"; model.finishRename()
+        model.query = "hyjy"
+        await model.waitForSearch()
+        #expect(model.visible.map(\.id) == [title.id])
+        model.query = "xmjh"
+        await model.waitForSearch()
+        #expect(model.visible.isEmpty)
+    }
+    @Test @MainActor func rapidTypingIsDebouncedAndKeepsCardsUntilResultsArrive() async {
+        let first = clip("old"), second = clip("new")
+        let index = DelayedIndex(old: first.id, new: second.id)
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), searchIndex: index)
+        model.history = History(clips: [first, second])
+        await model.waitForIndex()
+        for query in ["o", "ol", "old", "new"] { model.query = query }
+        #expect(model.visible.map(\.id) == [first.id, second.id])
+        await model.waitForSearch()
+        #expect(await index.queries == ["new"])
+        #expect(model.visible.map(\.id) == [second.id])
+        model.query = "old"
+        await index.waitForOld()
+        #expect(model.searchPending)
+        #expect(model.visible.map(\.id) == [second.id])
+        let waiting = Task { await model.waitForSearch() }
+        await Task.yield()
+        model.query = "new"
+        await index.finishOld()
+        await waiting.value
+        #expect(!model.searchPending)
+        #expect(model.visible.map(\.id) == [second.id])
+        model.clearSearch()
+        #expect(model.visible.map(\.id) == [first.id, second.id])
+    }
     @Test @MainActor func lateQueriesCannotReplaceNewResultsAndClearCancelsPendingSearch() async {
         let first = clip("old"), second = clip("new")
         let index = DelayedIndex(old: first.id, new: second.id)
@@ -87,6 +145,7 @@ struct ClipboardSearchTests {
         #expect(model.visible.count == 2)
     }
     @Test @MainActor func historyUpdatesReindexAndFailuresFallBackOffTheMainActor() async {
+        _ = NSApplication.shared
         let item = clip("content", title: "before")
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), searchIndex: FailingIndex())
         model.history = History(clips: [item])
@@ -115,10 +174,12 @@ private actor FailingIndex: ClipboardSearchIndex {
 private actor DelayedIndex: ClipboardSearchIndex {
     let old: UUID
     let new: UUID
+    private(set) var queries: [String] = []
     private var continuation: CheckedContinuation<Set<UUID>, Never>?
     init(old: UUID, new: UUID) { self.old = old; self.new = new }
     func synchronize(_ documents: [SearchDocument]) {}
     func search(_ query: String) async -> Set<UUID> {
+        queries.append(query)
         if query == "old" { return await withCheckedContinuation { continuation = $0 } }
         return [new]
     }
