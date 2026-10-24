@@ -19,6 +19,10 @@ final class AppLocalization: ObservableObject {
         language == .english ? english[key] ?? key : key
     }
     private static let english: [String: String] = [
+        "此设备不支持图片文字选择": "Live Text is not supported on this device",
+        "正在识别图片文字…": "Recognizing image text…",
+        "未识别到可选择的文字": "No selectable text found",
+        "图片文字识别失败，请重新打开预览": "Text recognition failed. Reopen the preview to retry.",
         "返回上一页": "Go Back",
         "前往下一页": "Go Forward",
         "正在加载网页…": "Loading page…",

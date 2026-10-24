@@ -91,6 +91,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if self.model.editingClipID != nil, event.keyCode != 53 { return event }
             // Keep typing, Space, Tab, and copy/paste inside the webpage; Escape still closes preview.
             if self.model.previewingWebPage, event.keyCode != 53 { return event }
+            if self.model.previewID != nil, self.model.editingClipID == nil,
+               event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command,
+               let image = LiveTextImageView.find(in: event.window?.contentView) {
+                if event.charactersIgnoringModifiers == "a" { image.selectAllText(); return nil }
+                if event.charactersIgnoringModifiers == "c" { image.copySelectedText(to: .general); return nil }
+            }
             if self.model.renamingID != nil, event.keyCode == 53 { self.model.renamingID = nil; self.window.makeFirstResponder(nil); return nil }
             if self.model.previewID != nil, event.keyCode == 53 || (event.keyCode == 49 && self.model.editingClipID == nil) {
                 self.model.closePreview(); self.window.makeKey(); return nil

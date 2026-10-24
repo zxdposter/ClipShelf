@@ -35,7 +35,7 @@ struct ClipPreview: View {
                 TextEditor(text: $model.editDraft).font(.system(size: 14)).padding(8)
             } else if clip.kind == .image, let data = clip.items.flatMap({ $0 }).first(where: { ["public.png", "public.tiff"].contains($0.type) })?.data,
                let image = NSImage(data: data) {
-                HighlightedClipImage(image: image, highlights: model.imageTextHighlights(for: clip)).padding(12)
+                HighlightedClipImage(image: image, highlights: model.imageTextHighlights(for: clip), selectionIdentity: clip.fingerprint).padding(12)
             } else if clip.kind == .files, let url = previewFileURL(clip) {
                 FileQuickPreview(url: url).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let url = webURL {
@@ -55,8 +55,12 @@ struct ClipPreview: View {
 struct HighlightedClipImage: View {
     let image: NSImage
     let highlights: [CGRect]
+    var selectionIdentity: String? = nil
     var body: some View {
-        Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+        Group {
+            if let identity = selectionIdentity { LiveTextImage(image: image, identity: identity) }
+            else { Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity) }
+        }
             .overlay {
                 GeometryReader { geometry in
                     ForEach(Array(highlights.enumerated()), id: \.offset) { _, box in

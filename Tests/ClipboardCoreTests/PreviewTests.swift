@@ -5,9 +5,67 @@ import LinkPresentation
 import ClipboardCore
 import WebKit
 import Network
+import VisionKit
 @testable import ClipShelf
 
 struct PreviewTests {
+    @Test @MainActor func imagePreviewSelectsAndCopiesChineseAndEnglishText() async throws {
+        try #require(ImageAnalyzer.isSupported)
+        let image = NSImage(size: CGSize(width: 1000, height: 240))
+        image.lockFocus()
+        NSColor.white.setFill(); CGRect(x: 0, y: 0, width: 1000, height: 240).fill()
+        ("中文搜索 Invoice 2026" as NSString).draw(at: CGPoint(x: 35, y: 100), withAttributes: [
+            .font: NSFont.systemFont(ofSize: 48), .foregroundColor: NSColor.black
+        ])
+        image.unlockFocus()
+        let data = try #require(image.tiffRepresentation)
+        let clip = Clip(kind: .image, text: "Fixture", sourceName: "Test", sourceBundle: "",
+                        items: [[Representation(type: "public.tiff", data: data)]], identity: data)
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        model.history = History(clips: [clip]); model.previewID = clip.id
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 660, height: 450), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.contentView = nil; window.close() }
+        let host = NSHostingView(rootView: ClipPreview(clip: clip, model: model, close: {}))
+        window.contentView = host; host.layoutSubtreeIfNeeded()
+        let native = try #require(LiveTextImageView.find(in: host))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(25))
+        while native.overlay.analysis == nil, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(50)) }
+        try #require(native.overlay.analysis != nil, "\(native.status.stringValue)")
+        #expect(native.overlay.text.contains("中文"))
+        #expect(native.overlay.text.localizedCaseInsensitiveContains("Invoice"))
+        #expect(native.overlay.preferredInteractionTypes == .textSelection)
+        #expect(!native.overlay.selectableItemsHighlighted)
+        #expect(native.overlay.isSupplementaryInterfaceHidden)
+        #expect(native.overlay.activeInteractionTypes.contains(.textSelection))
+        let fitted = LiveTextImageView(frame: CGRect(x: 0, y: 0, width: 600, height: 400))
+        fitted.imageView.image = image; fitted.layout()
+        #expect(fitted.imageView.frame == CGRect(x: 0, y: 128, width: 600, height: 144))
+        #expect(fitted.overlay.frame == fitted.imageView.frame)
+        fitted.imageView.image = NSImage(size: CGSize(width: 240, height: 1000)); fitted.layout()
+        #expect(fitted.imageView.frame == CGRect(x: 252, y: 0, width: 96, height: 400))
+        #expect(fitted.overlay.frame == fitted.imageView.frame)
+        #expect(native.overlay.frame == native.imageView.frame)
+        #expect(native.overlay.contentsRect == CGRect(x: 0, y: 0, width: 1, height: 1))
+        let board = NSPasteboard(name: .init("ClipShelf-LiveText-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        for term in ["中文", "Invoice"] {
+            let range = try #require(native.overlay.text.range(of: term, options: .caseInsensitive))
+            native.overlay.selectedRanges = [range]
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(native.copySelectedText(to: board))
+            #expect(board.string(forType: .string)?.localizedCaseInsensitiveContains(term) == true)
+        }
+        native.selectAllText()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(native.copySelectedText(to: board))
+        #expect(board.string(forType: .string)?.contains("中文") == true)
+        #expect(board.string(forType: .string)?.contains("Invoice") == true)
+        model.beginImageEdit(clip)
+        host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(100))
+        #expect(LiveTextImageView.find(in: host) == nil)
+        #expect(native.overlay.analysis == nil)
+    }
     @Test func webPreviewOnlyAllowsWebAddresses() {
         for address in ["https://example.com/article", "http://127.0.0.1:1234/page"] {
             #expect(allowsWebPreviewNavigation(URL(string: address)))

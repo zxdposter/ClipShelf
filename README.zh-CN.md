@@ -14,7 +14,7 @@
 
 ## 下载
 
-[**下载 ClipShelf 0.11.0 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.11.0/ClipShelf-0.11.0-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.11.0/ClipShelf-0.11.0-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.11.0)
+[**下载 ClipShelf 0.12.0 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.0/ClipShelf-0.12.0-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.0/ClipShelf-0.12.0-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.12.0)
 
 需要 **macOS 14 或更新版本**，以及搭载 **Apple 芯片（M1 或更新）** 的 Mac。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。
 
@@ -40,7 +40,7 @@ brew install --cask zxdposter/tap/clipshelf
 - **图片文字搜索**：使用苹果本地 OCR，在后台识别新图片和已有历史图片中的中英文；支持中文、全拼和首字母搜索，在图片卡片和放大预览中高亮命中文字。单张图片文件会归为图片，已有误分类记录自动修正。识别结果持久缓存；输入、中文组字和连续切换卡片时，会中断识别并暂缓后续任务和结果更新。
 - **按来源应用筛选**：从筛选菜单或输入时的应用建议中选择来源，可多选；已选应用显示为可移除标签，超宽后合并为数字标签，悬停查看完整列表、点击逐个移除。来源可与关键词、内容类型组合筛选。用 ↑↓ 选择建议、回车确认；搜索中按回车进入结果，再按回车粘贴，Tab / Shift-Tab 选择下一张 / 上一张卡片。
 - **保留文字格式**：卡片直接展示格式文本、图片和文件缩略图。
-- **空格预览**：粘贴前先查看完整文字、图片或文件。链接会在独立的临时 WebKit 会话中显示真实网页，可滚动、前进后退，也可手动在浏览器中打开。只有主动预览时才加载网页，不共享浏览器登录状态。
+- **空格预览**：粘贴前先查看完整文字、图片或文件。图片预览中可直接选中中文或英文，通过 **⌘C** 或右键菜单复制，**⌘A** 全选已识别文字。链接会在独立的临时 WebKit 会话中显示真实网页，可滚动、前进后退，也可手动在浏览器中打开。只有主动预览时才加载网页，不共享浏览器登录状态。
 - **辨认来源**：通过 App 图标和卡片底部的颜色，快速识别内容来自哪里。
 
 ### 中文、全拼、首字母，都能找到
