@@ -34,7 +34,7 @@ struct ClipPreview: View {
                 TextEditor(text: $model.editDraft).font(.system(size: 14)).padding(8)
             } else if clip.kind == .image, let data = clip.items.flatMap({ $0 }).first(where: { ["public.png", "public.tiff"].contains($0.type) })?.data,
                let image = NSImage(data: data) {
-                Image(nsImage: image).resizable().scaledToFit().padding(12).frame(maxWidth: .infinity, maxHeight: .infinity)
+                HighlightedClipImage(image: image, highlights: model.imageTextHighlights(for: clip)).padding(12)
             } else if clip.kind == .files, let url = previewFileURL(clip) {
                 FileQuickPreview(url: url).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -47,6 +47,35 @@ struct ClipPreview: View {
                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
         }.frame(width: 660, height: 450).background(ShelfDesign.paper).tint(ShelfDesign.accent)
     }
+}
+
+struct HighlightedClipImage: View {
+    let image: NSImage
+    let highlights: [CGRect]
+    var body: some View {
+        Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                GeometryReader { geometry in
+                    ForEach(Array(highlights.enumerated()), id: \.offset) { _, box in
+                        let rect = imageTextHighlightFrame(box, image: image.size, container: geometry.size)
+                        RoundedRectangle(cornerRadius: 2).fill(Color.yellow.opacity(0.3))
+                            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color.orange.opacity(0.6), lineWidth: 0.5))
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+                    }
+                }.allowsHitTesting(false).accessibilityHidden(true)
+            }
+    }
+}
+
+func imageTextHighlightFrame(_ box: CGRect, image: CGSize, container: CGSize) -> CGRect {
+    guard image.width > 0, image.height > 0 else { return .zero }
+    let scale = min(container.width / image.width, container.height / image.height)
+    let width = image.width * scale, height = image.height * scale
+    // Vision uses a bottom-left origin; SwiftUI positions from the top-left.
+    return CGRect(x: (container.width - width) / 2 + box.minX * width,
+                  y: (container.height - height) / 2 + (1 - box.maxY) * height,
+                  width: box.width * width, height: box.height * height)
 }
 
 func previewStatistics(_ text: String) -> String {

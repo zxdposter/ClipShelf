@@ -560,21 +560,7 @@ private struct ClipCardContent: View, Equatable {
                 Text(clip.text).font(.system(size: 10.5)).lineLimit(2).foregroundStyle(.secondary)
             }
         } else if let image {
-            Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay {
-                    GeometryReader { geometry in
-                        let scale = min(geometry.size.width / max(image.size.width, 1), geometry.size.height / max(image.size.height, 1))
-                        let width = image.size.width * scale
-                        let height = image.size.height * scale
-                        ForEach(Array(imageHighlights.enumerated()), id: \.offset) { _, box in
-                            RoundedRectangle(cornerRadius: 2).fill(Color.yellow.opacity(0.3))
-                                .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color.orange.opacity(0.6), lineWidth: 0.5))
-                                .frame(width: box.width * width, height: box.height * height)
-                                .position(x: (geometry.size.width - width) / 2 + box.midX * width,
-                                          y: (geometry.size.height - height) / 2 + (1 - box.midY) * height)
-                        }
-                    }.allowsHitTesting(false)
-                }
+            HighlightedClipImage(image: image, highlights: imageHighlights)
                 .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
         } else {
             Text(cardClipText(clip)).font(.system(size: 13)).lineSpacing(3.5).multilineTextAlignment(.leading)
