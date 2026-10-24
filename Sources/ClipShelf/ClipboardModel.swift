@@ -310,6 +310,11 @@ final class ClipboardModel: ObservableObject {
     @Published var selection = CardSelection()
     @Published private(set) var selectionScrollID: UUID?
     @Published var previewID: UUID?
+    var previewingWebPage: Bool {
+        guard editingClipID == nil, let id = previewID,
+              let clip = history.clips.first(where: { $0.id == id }), clip.kind == .link else { return false }
+        return safeLinkURL(clip) != nil
+    }
     func togglePreview() {
         if previewID != nil { closePreview(); return }
         guard let id = selectedID, selection.ids.contains(id), visible.contains(where: { $0.id == id }) else { return }

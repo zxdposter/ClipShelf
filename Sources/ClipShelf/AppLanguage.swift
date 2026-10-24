@@ -19,6 +19,13 @@ final class AppLocalization: ObservableObject {
         language == .english ? english[key] ?? key : key
     }
     private static let english: [String: String] = [
+        "返回上一页": "Go Back",
+        "前往下一页": "Go Forward",
+        "正在加载网页…": "Loading page…",
+        "重试": "Retry",
+        "在默认浏览器中打开": "Open in Default Browser",
+        "网页加载失败": "Could Not Load Page",
+        "网页无法在预览中显示，请在浏览器中打开。": "This page cannot be displayed in the preview. Open it in your browser.",
         "外观": "Appearance",
         "跟随系统": "System",
         "浅色": "Light",

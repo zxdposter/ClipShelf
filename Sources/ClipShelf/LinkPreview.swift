@@ -17,6 +17,10 @@ struct LinkPreview: NSViewRepresentable {
         return view
     }
     func updateNSView(_ nsView: LPLinkView, context: Context) {}
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: LPLinkView, context: Context) -> CGSize? {
+        // Remote metadata must not impose its natural image width on a clipboard card.
+        CGSize(width: proposal.width ?? 212, height: proposal.height ?? 180)
+    }
     static func dismantleNSView(_ nsView: LPLinkView, coordinator: Coordinator) { coordinator.provider?.cancel() }
     final class Coordinator { var provider: LPMetadataProvider? }
 }

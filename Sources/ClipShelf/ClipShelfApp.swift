@@ -89,6 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "w" { self.hideWindow(); return nil }
             if self.model.editingClipID != nil, event.keyCode != 53 { return event }
+            // Keep typing, Space, Tab, and copy/paste inside the webpage; Escape still closes preview.
+            if self.model.previewingWebPage, event.keyCode != 53 { return event }
             if self.model.renamingID != nil, event.keyCode == 53 { self.model.renamingID = nil; self.window.makeFirstResponder(nil); return nil }
             if self.model.previewID != nil, event.keyCode == 53 || (event.keyCode == 49 && self.model.editingClipID == nil) {
                 self.model.closePreview(); self.window.makeKey(); return nil
