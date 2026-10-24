@@ -122,11 +122,25 @@ struct OriginalSettingsTests {
     @Test @MainActor func stackAndBoardNavigationUseStableItems() throws {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         model.resetSelection(); let first = try #require(model.visible.first)
-        model.startStack()
+        var starts = 0, finishes = 0
+        model.onStackStarted = { starts += 1 }
+        model.onStackFinished = { finishes += 1 }
+        let historyIDs = model.history.clips.map(\.id)
+        model.toggleStack()
+        #expect(model.stackMode && starts == 1)
         #expect(model.stackClips.map(\.id) == [first.id])
+        model.toggleStack()
+        #expect(!model.stackMode && finishes == 1)
+        #expect(model.stackIDs == [first.id])
+        #expect(model.history.clips.map(\.id) == historyIDs)
+        #expect(!model.prepareStackPaste())
+        model.toggleStack(includeSelection: false)
+        #expect(model.stackMode && starts == 2)
         model.stackIDs.removeFirst(); #expect(model.stackClips.isEmpty)
         #expect(!model.visible.isEmpty)
-        model.stackMode = false
+        model.finishStack()
+        model.finishStack()
+        #expect(!model.stackMode && finishes == 2)
         model.advanceBoard(1); #expect(model.selectedBoardID == model.history.boards.first?.id)
         model.advanceBoard(1); #expect(model.selectedBoardID == nil)
         model.advanceBoard(-1); #expect(model.selectedBoardID == model.history.boards.last?.id)

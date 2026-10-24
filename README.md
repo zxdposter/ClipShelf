@@ -50,8 +50,9 @@ Select several cards to organize them together. Drop cards onto **+ Collections*
 
 ## Paste with fewer steps
 
-- **Quick Paste:** with the shelf open, press **⌘1–9** to paste a numbered card. Hold **⌘** to reveal the numbers. By default, numbering starts at the leftmost card that is more than half visible. Turn off **Number from Visible Cards** in Keyboard Shortcuts to number from the start of the list.
-- **Sequential Paste:** collect several items, then press **⌘V** in your destination app to paste them one at a time. Reverse the order or remove an item from the queue whenever needed.
+- **Quick Paste:** with the shelf open, press **⌘1–9** to paste a numbered card. Hold **⌘** alone to reveal the numbers; modifier combinations keep hints hidden, including while releasing the keys. The same rule applies if you choose another modifier. By default, numbering starts at the leftmost card that is more than half visible. Turn off **Number from Visible Cards** in Keyboard Shortcuts to number from the start of the list.
+- **Sequential Paste:** press **⇧⌘C** to start, then press it again to finish. Collect several items, then press **⌘V** in your destination app to paste them one at a time. Reverse the order or remove an item from the queue whenever needed.
+- **Collection removal:** Delete inside a collection only removes its membership there; history and other collections keep the card. Undo restores the membership. Delete from clipboard history still removes the card everywhere.
 - **Plain text:** paste without formatting when that is what you need.
 - **Multiple selections:** copy, paste, organize, or delete several cards together.
 
@@ -81,7 +82,7 @@ Changes take effect immediately and your choice is remembered after restarting. 
 | Action | Shortcut |
 | --- | --- |
 | Show or hide ClipShelf | **⇧⌘V** |
-| Open Sequential Paste | **⇧⌘C** |
+| Start / End Sequential Paste | **⇧⌘C** |
 | Search | **⌘F**, or start typing |
 | Select the next / previous card | **Tab / ⇧Tab**, or **→ / ←** |
 | Toggle a card in your selection | **⌘-click** |

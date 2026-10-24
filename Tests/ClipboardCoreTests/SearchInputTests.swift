@@ -91,7 +91,7 @@ struct SearchInputTests {
         #expect(delegate.control(control, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:))))
         #expect(submits == 1)
     }
-    @Test @MainActor func unchangedKeyboardAndSelectionDoNotRefreshTheShelf() {
+    @Test @MainActor func unchangedKeyboardAndSelectionDoNotRefreshTheShelf() async {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         model.preferences.quickPasteModifier = .command
         model.resetSelection()
@@ -104,6 +104,8 @@ struct SearchInputTests {
         }
         #expect(changes == 0)
         model.updateQuickPasteModifier(.command)
+        #expect(changes == 0)
+        await model.waitForModifierHints()
         let changesAfterPress = changes
         model.updateQuickPasteModifier(.command)
         #expect(changesAfterPress > 0)

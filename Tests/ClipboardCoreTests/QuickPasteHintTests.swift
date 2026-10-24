@@ -5,23 +5,73 @@ import SwiftUI
 @testable import ClipboardCore
 
 struct QuickPasteHintTests {
-    @Test @MainActor func hyperModifierDoesNotShowHintsOrEnableNumberShortcuts() {
+    @Test @MainActor func hyperModifierDoesNotShowHintsOrEnableNumberShortcuts() async throws {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         model.updateQuickPasteVisibleRange(model.visible.indices)
-        model.updateQuickPasteModifier(.command)
-        #expect(model.commandHeld && model.quickPasteHeld)
-        model.updateQuickPasteModifier([.command, .option, .shift, .control])
-        #expect(!model.commandHeld && !model.quickPasteHeld)
-        #expect(model.quickPasteNumber(at: 0) == nil)
+        // Both the build-up and the release tail contain Cmd-only intermediate events.
+        for flags: NSEvent.ModifierFlags in [.command, [.command, .option], [.command, .option, .shift], [.command, .option, .shift, .control]] {
+            model.updateQuickPasteModifier(flags)
+            #expect(!model.commandHeld && !model.quickPasteHintsShown)
+        }
+        for flags: NSEvent.ModifierFlags in [[.command, .option, .shift], [.command, .shift], .command] {
+            model.updateQuickPasteModifier(flags)
+            try await Task.sleep(for: .milliseconds(160))
+            #expect(!model.commandHeld && !model.quickPasteHintsShown)
+            #expect(model.quickPasteNumber(at: 0) == nil)
+        }
+        model.updateQuickPasteModifier([])
         model.updateQuickPasteModifier([.command, .shift])
-        #expect(model.commandHeld && model.quickPasteHeld)
+        #expect(model.quickPasteHeld)
+        #expect(!model.commandHeld && !model.quickPasteHintsShown)
+        #expect(model.quickPasteClip(number: 1) != nil)
+        await model.waitForModifierHints()
+        #expect(!model.commandHeld && !model.quickPasteHintsShown)
+        model.updateQuickPasteModifier([])
         model.updateQuickPasteModifier([.command, .capsLock, .function])
+        await model.waitForModifierHints()
         #expect(model.commandHeld && model.quickPasteHeld)
         model.preferences.quickPasteModifier = .option
         model.updateQuickPasteModifier([.command, .option, .shift, .control, .capsLock])
-        #expect(!model.commandHeld && !model.quickPasteHeld)
+        #expect(!model.commandHeld && !model.quickPasteHintsShown)
         model.updateQuickPasteModifier(.option)
-        #expect(!model.commandHeld && model.quickPasteHeld)
+        try await Task.sleep(for: .milliseconds(160))
+        #expect(!model.commandHeld && !model.quickPasteHintsShown)
+        model.updateQuickPasteModifier([])
+        model.updateQuickPasteModifier(.option)
+        #expect(model.quickPasteHeld)
+        await model.waitForModifierHints()
+        #expect(!model.commandHeld && model.quickPasteHintsShown)
+        model.updateQuickPasteModifier([])
+        #expect(!model.quickPasteHintsShown)
+        // A tap that ends before the delay must never show a late hint.
+        model.updateQuickPasteModifier(.command)
+        model.updateQuickPasteModifier([])
+        try await Task.sleep(for: .milliseconds(160))
+        #expect(!model.commandHeld && !model.quickPasteHintsShown)
+    }
+    @Test @MainActor func modifierHintsRequireTheConfiguredModifierAlone() async throws {
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        model.updateQuickPasteVisibleRange(model.visible.indices)
+        for modifier in KeyModifier.allCases {
+            model.preferences.quickPasteModifier = modifier
+            model.updateQuickPasteModifier([])
+            model.updateQuickPasteModifier(modifier.flag)
+            #expect(model.quickPasteHeld)
+            #expect(!model.quickPasteHintsShown)
+            #expect(model.quickPasteClip(number: 1) != nil)
+            await model.waitForModifierHints()
+            #expect(model.quickPasteHintsShown)
+            for extra in KeyModifier.allCases where extra != modifier {
+                model.updateQuickPasteModifier([])
+                model.updateQuickPasteModifier(modifier.flag)
+                model.updateQuickPasteModifier([modifier.flag, extra.flag])
+                #expect(!model.commandHeld && !model.quickPasteHintsShown)
+                model.updateQuickPasteModifier(modifier.flag)
+                try await Task.sleep(for: .milliseconds(160))
+                #expect(!model.commandHeld && !model.quickPasteHintsShown)
+            }
+            model.updateQuickPasteModifier([])
+        }
     }
     @Test @MainActor func keyboardScrollReachesNativeViewport() async throws {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
@@ -41,7 +91,7 @@ struct QuickPasteHintTests {
             (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(findScrolls)
         }
         let scroll = try #require(findScrolls(window.contentView!).first { ($0.documentView?.frame.width ?? 0) > 10000 })
-        #expect(scroll.contentView.bounds.minX > 12000)
+        #expect(scroll.contentView.bounds.minX > ShelfCardLayout.width * 40)
         let index = try #require(model.visible.firstIndex { $0.id == model.selectedID })
         let left = ShelfCardLayout.inset + CGFloat(index) * (ShelfCardLayout.width + ShelfCardLayout.spacing)
         #expect(left >= scroll.contentView.bounds.minX)
@@ -50,7 +100,7 @@ struct QuickPasteHintTests {
         #expect(model.quickPasteVisibleRange == expectedRange)
         #expect(model.quickPasteClip(number: 1)?.id == model.visible[expectedRange.lowerBound].id)
         // Native bounds notifications cover trackpad and mouse scrolling too.
-        scroll.contentView.scroll(to: CGPoint(x: 152, y: 0))
+        scroll.contentView.scroll(to: CGPoint(x: ShelfCardLayout.inset + ShelfCardLayout.width / 2, y: 0))
         scroll.reflectScrolledClipView(scroll.contentView)
         try await Task.sleep(for: .milliseconds(80))
         #expect(model.quickPasteVisibleRange.lowerBound == 1)
@@ -63,16 +113,17 @@ struct QuickPasteHintTests {
             ShelfCardLayout.visibleRange(count: 20, viewport: CGRect(x: x, y: 0, width: width, height: 300))
         }
         #expect(range(0) == 0..<4)
-        #expect(range(151.99) == 0..<4)
-        #expect(range(152) == 1..<4)
-        #expect(range(152.01) == 1..<4)
-        #expect(range(0, 152) == 0..<0)
-        #expect(range(0, 152.01) == 0..<1)
-        #expect(range(0, 128) == 0..<0)
+        let halfEdge = ShelfCardLayout.inset + ShelfCardLayout.width / 2
+        #expect(range(halfEdge - 0.01) == 0..<4)
+        #expect(range(halfEdge) == 1..<4)
+        #expect(range(halfEdge + 0.01) == 1..<4)
+        #expect(range(0, halfEdge) == 0..<0)
+        #expect(range(0, halfEdge + 0.01) == 0..<1)
+        #expect(range(0, ShelfCardLayout.width / 2) == 0..<0)
         #expect(range(5344) == 20..<20)
         #expect(ShelfCardLayout.visibleRange(count: 0, viewport: CGRect(x: 0, y: 0, width: 1000, height: 300)).isEmpty)
     }
-    @Test @MainActor func viewportNumbersMatchTargetsAndIgnoreSmallScrollChanges() {
+    @Test @MainActor func viewportNumbersMatchTargetsAndIgnoreSmallScrollChanges() async throws {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         let clips = (0..<20).map { Clip(kind: .text, text: "\($0)", sourceName: "Test", sourceBundle: "test", items: [], identity: Data("\($0)".utf8)) }
         model.history = History(clips: clips)
@@ -85,6 +136,7 @@ struct QuickPasteHintTests {
         model.updateQuickPasteVisibleRange(6..<10)
         #expect(changes == 0)
         model.updateQuickPasteModifier(.command)
+        await model.waitForModifierHints()
         changes = 0
         for _ in 0..<20 { model.updateQuickPasteVisibleRange(6..<10) }
         #expect(changes == 0)
@@ -106,15 +158,15 @@ struct QuickPasteHintTests {
         let viewport = CGRect(x: 0, y: 0, width: 1000, height: 300)
         #expect(ShelfCardLayout.navigationOffset(index: 0, count: 200, viewport: viewport) == 0)
         #expect(ShelfCardLayout.navigationOffset(index: 2, count: 200, viewport: viewport) == 0)
-        #expect(ShelfCardLayout.navigationOffset(index: 3, count: 200, viewport: viewport) == 120)
-        let scrolled = CGRect(x: 120, y: 0, width: 1000, height: 300)
-        #expect(ShelfCardLayout.navigationOffset(index: 3, count: 200, viewport: scrolled) == 120)
+        #expect(ShelfCardLayout.navigationOffset(index: 3, count: 200, viewport: viewport) == 56)
+        let scrolled = CGRect(x: 56, y: 0, width: 1000, height: 300)
+        #expect(ShelfCardLayout.navigationOffset(index: 3, count: 200, viewport: scrolled) == 56)
         #expect(ShelfCardLayout.navigationOffset(index: 0, count: 200, viewport: scrolled) == 0)
-        #expect(ShelfCardLayout.navigationOffset(index: 199, count: 200, viewport: viewport) == 53432)
+        #expect(ShelfCardLayout.navigationOffset(index: 199, count: 200, viewport: viewport) == 50232)
         #expect(ShelfCardLayout.navigationOffset(index: 0, count: 1, viewport: scrolled) == 0)
-        #expect(ShelfCardLayout.navigationOffset(index: 0, count: 0, viewport: scrolled) == 120)
-        #expect(ShelfCardLayout.navigationOffset(index: -1, count: 200, viewport: scrolled) == 120)
-        #expect(ShelfCardLayout.navigationOffset(index: 1, count: 200, viewport: CGRect(x: 0, y: 0, width: 200, height: 300)) == 272)
+        #expect(ShelfCardLayout.navigationOffset(index: 0, count: 0, viewport: scrolled) == 56)
+        #expect(ShelfCardLayout.navigationOffset(index: -1, count: 200, viewport: scrolled) == 56)
+        #expect(ShelfCardLayout.navigationOffset(index: 1, count: 200, viewport: CGRect(x: 0, y: 0, width: 200, height: 300)) == 256)
     }
     @Test @MainActor func keyboardNavigationInvalidatesOnlyChangedCardFaces() {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
@@ -148,6 +200,7 @@ struct QuickPasteHintTests {
         #expect(model.quickPasteNumber(at: 0) == nil)
         model.updateQuickPasteVisibleRange(model.visible.indices)
         model.updateQuickPasteModifier(.command)
+        await model.waitForModifierHints()
         #expect(model.commandHeld)
         #expect(model.quickPasteNumber(at: 0) == 1)
         #expect(model.quickPasteClip(number: 1)?.id == model.visible.first?.id)
@@ -162,9 +215,11 @@ struct QuickPasteHintTests {
         #expect(model.quickPasteNumber(at: 0) == nil)
         model.preferences.quickPasteModifier = .option
         model.updateQuickPasteModifier(.command)
+        await model.waitForModifierHints()
         #expect(model.commandHeld)
         #expect(model.quickPasteNumber(at: 0) == nil)
         model.updateQuickPasteModifier(.option)
+        await model.waitForModifierHints()
         #expect(!model.commandHeld)
         #expect(model.quickPasteNumber(at: 0) == 1)
         model.creatingBoard = true
@@ -192,7 +247,7 @@ struct QuickPasteHintTests {
         #expect(model.selection.ids == Set(clips.prefix(3).map(\.id)))
         #expect(model.selectionScrollID == nil)
     }
-    @Test @MainActor func hintsAndBindingsStopAtNine() {
+    @Test @MainActor func hintsAndBindingsStopAtNine() async throws {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         let clips = (0..<12).map { index in
             Clip(kind: .text, text: String(index), sourceName: "Test", sourceBundle: "test", items: [], identity: Data(String(index).utf8))
@@ -200,6 +255,7 @@ struct QuickPasteHintTests {
         model.history = History(clips: clips)
         model.updateQuickPasteVisibleRange(clips.indices)
         model.updateQuickPasteModifier(.command)
+        await model.waitForModifierHints()
         #expect(model.quickPasteNumber(at: 8) == 9)
         #expect(model.quickPasteNumber(at: 9) == nil)
         #expect(model.quickPasteNumber(at: -1) == nil)

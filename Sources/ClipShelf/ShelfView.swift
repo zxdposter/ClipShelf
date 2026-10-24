@@ -432,13 +432,13 @@ private struct ClipCardFace: View, Equatable {
                             .onSubmit { model.finishRename() }.onAppear { renameFocused = true }
                             .onChange(of: renameFocused) { _, focused in if !focused && model.renamingID == clip.id { model.finishRename() } }
                 } else if let title = clip.title {
-                    Text(title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                    Text(title).font(.system(size: 10.5, weight: .medium)).lineLimit(1)
                 }
                 ClipCardContent(clip: clip, linkPreviews: state.linkPreviews, refreshID: state.refreshID)
                     .equatable().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 ClipCardFooter(clip: clip, quickPasteNumber: quickPasteNumber, language: language).equatable()
                     .offset(y: 4)
-            }.padding(16).frame(width: ShelfCardLayout.width, height: 268)
+            }.padding(14).frame(width: ShelfCardLayout.width, height: ShelfCardLayout.height)
                 .background {
                     RoundedRectangle(cornerRadius: 16).fill(ShelfDesign.card)
                         .overlay {
@@ -455,7 +455,7 @@ private struct ClipCardFace: View, Equatable {
                 .overlay(alignment: .topTrailing) {
                     if state.commandHeld {
                         TimelineView(.periodic(from: .now, by: 60)) { context in
-                            Text(relativeTime(context.date)).font(.system(size: 10, weight: .medium))
+                            Text(relativeTime(context.date)).font(.system(size: 9.5, weight: .medium))
                                 .foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 5)
                                 .background(ShelfDesign.paper, in: RoundedRectangle(cornerRadius: 7))
                         }.padding(8).allowsHitTesting(false)
@@ -522,7 +522,7 @@ private struct ClipCard: View {
                 if [.text, .link].contains(clip.kind) { Button(L("编辑")) { model.beginTextEdit(clip) }.keyboardShortcut("e") }
                 if clip.kind == .image { Button(L("编辑")) { model.beginImageEdit(clip) }.keyboardShortcut("e") }
                 Button(L("重命名")) { model.beginRename(clip) }.keyboardShortcut("r")
-                Button(L("删除"), role: .destructive, action: remove).keyboardShortcut(.delete, modifiers: [])
+                Button(model.selectedBoardID == nil ? L("删除") : L("移出当前收藏集"), role: model.selectedBoardID == nil ? .destructive : nil, action: remove).keyboardShortcut(.delete, modifiers: [])
                 Divider()
                 Menu(L("固定")) {
                     ForEach(model.history.boards) { board in
@@ -531,7 +531,6 @@ private struct ClipCard: View {
                     Divider()
                     Button(L("新建收藏集…")) { model.beginBoardEdit(clip: clip) }
                 }
-                if model.selectedBoardID != nil { Button(L("取消固定")) { model.removeFromCurrentBoard(clip) } }
                 Divider()
                 Button(L("预览")) { model.previewID = clip.id }.keyboardShortcut(.space, modifiers: [])
                 Button(L("分享")) { sharingShown = true }
@@ -554,13 +553,13 @@ private struct ClipCardContent: View, Equatable {
             VStack(alignment: .leading, spacing: 6) {
                 FileCardThumbnail(urls: filePreviewURLs(clip), refreshID: refreshID)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).clipped().allowsHitTesting(false)
-                Text(clip.text).font(.system(size: 11)).lineLimit(2).foregroundStyle(.secondary)
+                Text(clip.text).font(.system(size: 10.5)).lineLimit(2).foregroundStyle(.secondary)
             }
         } else if let image {
             Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
         } else {
-            Text(cardClipText(clip)).font(.system(size: 14)).lineSpacing(4).multilineTextAlignment(.leading)
+            Text(cardClipText(clip)).font(.system(size: 13)).lineSpacing(3.5).multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).clipped()
                 .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.85), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
         }
@@ -574,8 +573,8 @@ private struct ClipCardFooter: View, Equatable {
     var body: some View {
         let appearance = SourceAppearance.forApp(clip.sourceBundle, fallback: clip.kind.symbol)
         HStack(spacing: 6) {
-            Image(nsImage: appearance.icon).resizable().frame(width: 16, height: 16)
-            Text(clip.sourceName).font(.system(size: 10, weight: .medium)).lineLimit(1).foregroundStyle(.secondary)
+            Image(nsImage: appearance.icon).resizable().frame(width: 14, height: 14)
+            Text(clip.sourceName).font(.system(size: 9.5, weight: .medium)).lineLimit(1).foregroundStyle(.secondary)
             Spacer(minLength: 2)
             ZStack(alignment: .trailing) {
                 Text(clip.kind == .text || clip.kind == .link ? L("%@ 个字符", clip.text.count) : Int64(clip.byteCount).formatted(.byteCount(style: .file).locale(Locale(identifier: language.rawValue))))
@@ -584,9 +583,9 @@ private struct ClipCardFooter: View, Equatable {
                 if let quickPasteNumber {
                     Text(String(quickPasteNumber)).accessibilityLabel(L("快速粘贴 %@", quickPasteNumber))
                 }
-            }.font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+            }.font(.system(size: 9.5)).foregroundStyle(.secondary).lineLimit(1)
             Image(systemName: clip.kind.symbol)
-                .font(.system(size: 11)).foregroundStyle(ShelfDesign.typeColor(clip.kind))
+                .font(.system(size: 10)).foregroundStyle(ShelfDesign.typeColor(clip.kind))
                 .accessibilityLabel(clip.kind.label)
         }
     }

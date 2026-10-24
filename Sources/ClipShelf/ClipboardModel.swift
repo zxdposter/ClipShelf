@@ -209,7 +209,7 @@ final class ClipboardModel: ObservableObject {
         guard let id = selectedID, selection.ids.contains(id), visible.contains(where: { $0.id == id }) else { return }
         previewID = id
     }
-    @Published var quickPasteHeld = false
+    private(set) var quickPasteHeld = false
     private(set) var quickPasteVisibleRange = 0..<0
     func updateQuickPasteVisibleRange(_ range: Range<Int>) {
         let count = visible.count
@@ -218,22 +218,48 @@ final class ClipboardModel: ObservableObject {
         let next = start..<min(end, start + 9)
         guard quickPasteVisibleRange != next else { return }
         // Scrolling without the modifier must not invalidate every card just to update hidden hints.
-        if quickPasteHeld && preferences.quickPasteFromVisibleCards { objectWillChange.send() }
+        if quickPasteHintsShown && preferences.quickPasteFromVisibleCards { objectWillChange.send() }
         quickPasteVisibleRange = next
     }
     private var quickPasteRange: Range<Int> {
         preferences.quickPasteFromVisibleCards ? quickPasteVisibleRange : 0..<min(9, visible.count)
     }
     @Published private(set) var commandHeld = false
+    @Published private(set) var quickPasteHintsShown = false
+    private var modifierHintTask: Task<Void, Never>?
+    private var hintFlags: NSEvent.ModifierFlags = []
+    private var hintModifier: KeyModifier?
+    private var suppressModifierHintsUntilReleased = false
     func updateQuickPasteModifier(_ flags: NSEvent.ModifierFlags) {
-        let hyper = flags.contains([.command, .option, .shift, .control])
-        let command = flags.contains(.command) && !hyper
-        if commandHeld != command { commandHeld = command }
-        let held = flags.contains(preferences.quickPasteModifier.flag) && !hyper
+        let primary: NSEvent.ModifierFlags = [.command, .option, .shift, .control]
+        let modifiers = flags.intersection(primary)
+        if modifiers.rawValue.nonzeroBitCount > 1 { suppressModifierHintsUntilReleased = true }
+        if modifiers.isEmpty { suppressModifierHintsUntilReleased = false }
+        guard modifiers != hintFlags || hintModifier != preferences.quickPasteModifier else { return }
+        hintFlags = modifiers
+        hintModifier = preferences.quickPasteModifier
+        let command = modifiers == .command && !suppressModifierHintsUntilReleased
+        let quickHints = modifiers == preferences.quickPasteModifier.flag && !suppressModifierHintsUntilReleased
+        let held = modifiers.contains(preferences.quickPasteModifier.flag) && modifiers != primary
+        // Shortcut eligibility is immediate; only the visual hints wait for a settled modifier chord.
         if quickPasteHeld != held { quickPasteHeld = held }
+        modifierHintTask?.cancel()
+        modifierHintTask = nil
+        if !command && commandHeld { commandHeld = false }
+        if !quickHints && quickPasteHintsShown { quickPasteHintsShown = false }
+        guard command || quickHints, commandHeld != command || quickPasteHintsShown != quickHints else { return }
+        let deadline = ContinuousClock.now.advanced(by: .milliseconds(120))
+        modifierHintTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(until: deadline, clock: .continuous) }
+            catch { return }
+            guard let self else { return }
+            if self.commandHeld != command { self.commandHeld = command }
+            if self.quickPasteHintsShown != quickHints { self.quickPasteHintsShown = quickHints }
+        }
     }
+    func waitForModifierHints() async { await modifierHintTask?.value }
     func quickPasteNumber(at index: Int) -> Int? {
-        guard quickPasteHeld else { return nil }
+        guard quickPasteHintsShown else { return nil }
         let range = quickPasteRange
         guard range.contains(index), index < visible.count,
               editingClipID == nil, renamingID == nil, !creatingBoard, editingBoardID == nil else { return nil }
@@ -354,6 +380,7 @@ final class ClipboardModel: ObservableObject {
                                 "org.nspasteboard.ConcealedType", "de.petermaurer.TransientPasteboardType"]
     private var nextPrune = Date.distantPast
     var onStackStarted: (() -> Void)?
+    var onStackFinished: (() -> Void)?
     @Published var stackPasteAvailable = false
     @Published var stackMode = false
     @Published var stackIDs: [UUID] = []
@@ -437,11 +464,8 @@ final class ClipboardModel: ObservableObject {
         commit { history in for item in clips.reversed() { history.addToBoard(clipID: item.id, boardID: board.id) } }
     }
     func removeFromCurrentBoard(_ clip: Clip) {
-        if let selectedBoardID {
-            let clips = targets(for: clip)
-            commit { history in for item in clips { history.removeFromBoard(clipID: item.id, boardID: selectedBoardID) } }
-            resetSelection()
-        }
+        guard selectedBoardID != nil else { return }
+        remove(clip)
     }
     func drop(_ strings: [String], on board: Pinboard) -> Bool {
         defer { dropTargetBoardID = nil }
@@ -600,8 +624,15 @@ final class ClipboardModel: ObservableObject {
     func remove(_ clip: Clip) {
         guard !locked else { return }
         let clips = targets(for: clip)
-        let deletion = history.deletion(for: Set(clips.map(\.id)))
-        commit { history in for item in clips { history.remove(id: item.id) } }
+        let boardID = selectedBoardID
+        let snapshot = boardID.map { id in History(clips: history.clips, boards: history.boards.filter { $0.id == id }) } ?? history
+        let deletion = snapshot.deletion(for: Set(clips.map(\.id)))
+        commit { history in
+            for item in clips {
+                if let boardID { history.removeFromBoard(clipID: item.id, boardID: boardID) }
+                else { history.remove(id: item.id) }
+            }
+        }
         guard !storageFailed else { return }
         deletions.append(deletion)
         while deletions.count > 20 || deletions.reduce(0, { $0 + $1.byteCount }) > History.maximumHistoryBytes { deletions.removeFirst() }
@@ -633,6 +664,15 @@ final class ClipboardModel: ObservableObject {
         stackMode = true
         if stackIDs.isEmpty { stackIDs = clips.map(\.id) }
         onStackStarted?()
+    }
+    func toggleStack(includeSelection: Bool = true) {
+        if stackMode { finishStack() }
+        else { startStack(includeSelection: includeSelection) }
+    }
+    func finishStack() {
+        guard stackMode else { return }
+        stackMode = false
+        onStackFinished?()
     }
     @discardableResult func prepareStackPaste() -> Bool {
         guard stackMode else { return false }

@@ -7,7 +7,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .activate: L("启动 ClipShelf")
-        case .stack: L("启动顺序粘贴")
+        case .stack: L("启动或结束顺序粘贴")
         case .nextBoard: L("下一个收藏集")
         case .previousBoard: L("上一个收藏集")
         }

@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 enum ShelfCardLayout {
-    static let width: CGFloat = 256
+    static let width: CGFloat = 240
+    static let height: CGFloat = 252
     static let spacing: CGFloat = 16
     static let inset: CGFloat = 24
 

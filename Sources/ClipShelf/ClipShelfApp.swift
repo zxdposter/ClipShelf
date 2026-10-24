@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSApp.appearance = appearance.nativeAppearance
         }
         model.onStackStarted = { [weak self] in self?.showStack() }
+        model.onStackFinished = { [weak self] in self?.stackPanel?.orderOut(nil) }
         installMainMenu()
         window = ShelfPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         window.title = "ClipShelf"
@@ -286,8 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.sharingType = model.preferences.showInScreenSharing ? .readOnly : .none
             panel.contentView = NSHostingView(rootView: StackView(model: model, openSettings: { [weak self] in self?.showSettings() }, finish: { [weak self] in
-                self?.model.stackMode = false
-                self?.stackPanel?.orderOut(nil)
+                self?.model.finishStack()
             }))
             let screen = NSScreen.main?.visibleFrame ?? .zero
             panel.setFrameOrigin(NSPoint(x: screen.maxX - 344, y: screen.midY - 200))
@@ -341,7 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 MainActor.assumeIsolated {
                     guard let delegate = NSApplication.shared.delegate as? AppDelegate else { return }
                     if identifier.id == 2 {
-                        delegate.model.startStack(includeSelection: delegate.window.isVisible)
+                        delegate.model.toggleStack(includeSelection: delegate.window.isVisible)
                     } else {
                         delegate.showWindow()
                     }
@@ -490,7 +490,7 @@ private final class ShelfPanel: NSPanel {
 
 enum ShelfGeometry {
     static func shown(in screen: NSRect) -> NSRect {
-        NSRect(x: screen.minX + 16, y: screen.minY + 16, width: max(0, screen.width - 32), height: max(0, min(352, screen.height - 32)))
+        NSRect(x: screen.minX + 16, y: screen.minY + 16, width: max(0, screen.width - 32), height: max(0, min(ShelfCardLayout.height + 84, screen.height - 32)))
     }
     static func hidden(from frame: NSRect) -> NSRect { frame.offsetBy(dx: 0, dy: -18) }
 }
