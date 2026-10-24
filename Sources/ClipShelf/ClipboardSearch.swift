@@ -42,9 +42,17 @@ struct SearchDocument: Equatable, Codable, Sendable {
     let text: String
     let title: String
     let source: String
-    init(_ clip: Clip) { id = clip.id; text = clip.text; title = clip.title ?? ""; source = clip.sourceName }
+    let imageText: String
+    let imageTerms: [String]
+    init(_ clip: Clip, imageText: RecognizedImageText? = nil) {
+        id = clip.id; text = clip.text; title = clip.title ?? ""; source = clip.sourceName
+        self.imageText = imageText?.text ?? ""; imageTerms = imageText?.terms ?? []
+    }
     func matches(_ terms: [String]) -> Bool {
-        terms.allSatisfy { text.localizedStandardContains($0) || title.localizedStandardContains($0) || source.localizedStandardContains($0) }
+        terms.allSatisfy { term in
+            text.localizedStandardContains(term) || title.localizedStandardContains(term) || source.localizedStandardContains(term) ||
+                imageTerms.contains { $0.contains(foldedSearchText(term)) }
+        }
     }
 }
 
@@ -61,7 +69,7 @@ actor MemorySearchIndex: ClipboardSearchIndex {
         init(_ document: SearchDocument) {
             self.document = document
             let values = [document.text, document.title, document.source]
-            fields = (values.map(foldedSearchText) + values.flatMap(pinyinSearchTerms)).map { $0 as NSString }
+            fields = (values.map(foldedSearchText) + values.flatMap(pinyinSearchTerms) + document.imageTerms).map { $0 as NSString }
         }
         func matches(_ terms: [String]) -> Bool {
             terms.allSatisfy { term in
@@ -182,7 +190,7 @@ actor SpotlightSearchIndex: ClipboardSearchIndex {
             var batch: [CSSearchableItem] = []
             for document in changed {
                 var ids: [String] = []
-                for (part, text) in Self.chunks(document.text).enumerated() {
+                for (part, text) in Self.chunks(([document.text] + document.imageTerms).joined(separator: "\n")).enumerated() {
                     let attributes = CSSearchableItemAttributeSet(contentType: .text)
                     attributes.title = document.title
                     attributes.textContent = text

@@ -14,7 +14,7 @@ A clipboard manager for Mac, with searchable history, collections, and a card-ba
 
 ## Download
 
-[**Download ClipShelf 0.9.8 for Mac**](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.8/ClipShelf-0.9.8-macOS-arm64.dmg) · [ZIP download](https://github.com/zxdposter/ClipShelf/releases/download/v0.9.8/ClipShelf-0.9.8-macOS-arm64.zip) · [Release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.9.8)
+[**Download ClipShelf 0.10.0 for Mac**](https://github.com/zxdposter/ClipShelf/releases/download/v0.10.0/ClipShelf-0.10.0-macOS-arm64.dmg) · [ZIP download](https://github.com/zxdposter/ClipShelf/releases/download/v0.10.0/ClipShelf-0.10.0-macOS-arm64.zip) · [Release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.10.0)
 
 Requires **macOS 14 or later** and a Mac with **Apple silicon (M1 or later)**. Open the DMG and drag ClipShelf into Applications.
 
@@ -37,6 +37,7 @@ Copy text, links, images, or files, then bring up ClipShelf to find them again. 
 - **Clipboard history** — keep recent copies together instead of losing the previous one.
 - **No duplicate clutter** — copying the same content brings its existing card back to the front.
 - **Search and filter** — find content, saved titles, or app names; search Chinese with full pinyin or initials (for example, `zhongwen` or `zw` for 中文), and narrow results by content type.
+- **Search text in images** — on-device Apple OCR recognizes Chinese and English in the background, including existing image history. Search recognized text in Chinese, full pinyin, or initials, with matching words highlighted in image cards. Results are cached; recognition yields while typing, composing Chinese, or navigating cards.
 - **Filter by source app** — choose one or more apps from the filter menu or inline suggestions. Removable app tokens combine with keywords and content types; when they overflow, a count badge shows the full list on hover and individual removal on click. Use ↑↓ and Return to choose a suggestion; otherwise Return focuses results, a second Return pastes, and Tab / Shift-Tab selects the next / previous card.
 - **Keep the formatting** — see formatted text, images, and file thumbnails right on the cards.
 - **Preview with Space** — take a closer look at text, images, or files before pasting.

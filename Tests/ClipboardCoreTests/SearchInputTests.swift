@@ -115,7 +115,8 @@ struct SearchInputTests {
         _ = NSApplication.shared
         var query = "previous"
         var updates = 0
-        let view = ShelfSearchField(text: Binding(get: { query }, set: { query = $0 }), submit: {}, register: { _ in }, changed: { updates += 1 })
+        var interactions = 0
+        let view = ShelfSearchField(text: Binding(get: { query }, set: { query = $0 }), submit: {}, register: { _ in }, changed: { updates += 1 }, interacted: { interactions += 1 })
         let delegate = view.makeCoordinator()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 40), styleMask: .borderless, backing: .buffered, defer: false)
         let field = ShelfSearchField.SearchField(frame: NSRect(x: 0, y: 0, width: 300, height: 22))
@@ -131,11 +132,14 @@ struct SearchInputTests {
         }
         #expect(query == "previous")
         #expect(updates == 0)
+        #expect(interactions >= 5)
+        let interactionsBeforeCommit = interactions
         editor.insertText("你好", replacementRange: editor.markedRange())
         delegate.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
         #expect(!editor.hasMarkedText())
         #expect(query == "previous你好")
         #expect(updates == 1)
+        #expect(interactions > interactionsBeforeCommit)
     }
     @Test @MainActor func initialFocusAppendsWithoutSelectingExistingCharacters() async throws {
         _ = NSApplication.shared

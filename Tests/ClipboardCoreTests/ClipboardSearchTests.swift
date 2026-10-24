@@ -1,10 +1,246 @@
 import Foundation
 import AppKit
 import Testing
+import Combine
+import Vision
 @testable import ClipboardCore
 @testable import ClipShelf
 
 struct ClipboardSearchTests {
+    private func image(_ byte: UInt8) -> Clip {
+        let data = Data([byte])
+        return Clip(kind: .image, text: "图片", sourceName: "截图", sourceBundle: "test.image",
+                    items: [[Representation(type: "public.png", data: data)]], identity: data)
+    }
+
+    @Test @MainActor func appleOCRRecognizesChineseAndEnglishLocally() async throws {
+        let image = NSImage(size: NSSize(width: 1000, height: 220))
+        image.lockFocus()
+        NSColor.white.setFill(); NSRect(x: 0, y: 0, width: 1000, height: 220).fill()
+        ("中文搜索测试 Invoice 2026" as NSString).draw(at: NSPoint(x: 35, y: 90), withAttributes: [
+            .font: NSFont.systemFont(ofSize: 48), .foregroundColor: NSColor.black
+        ])
+        image.unlockFocus()
+        let tiff = try #require(image.tiffRepresentation)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clip = Clip(kind: .image, text: "图片", sourceName: "Test", sourceBundle: "",
+                        items: [[Representation(type: "public.tiff", data: tiff)]], identity: tiff)
+        let service = ImageTextService(cacheURL: directory.appendingPathComponent("ocr.sqlite"))
+        let recognized = try await service.text(for: clip)
+        #expect(recognized.text.contains("中文"))
+        #expect(recognized.text.localizedCaseInsensitiveContains("Invoice"))
+        for query in ["中文", "zhongwen", "zw", "invoice"] {
+            let boxes = recognized.matchingRegions(query)
+            #expect(!boxes.isEmpty)
+            #expect(boxes.allSatisfy { CGRect(x: 0, y: 0, width: 1, height: 1).contains($0) })
+        }
+        #expect(recognized.matchingRegions("").isEmpty)
+        #expect(recognized.matchingRegions("not-in-picture").isEmpty)
+        let reloaded = try await ImageTextService(cacheURL: directory.appendingPathComponent("ocr.sqlite"), recognize: { _ in throw CocoaError(.featureUnsupported) }).text(for: clip)
+        #expect(reloaded == recognized)
+        let index = MemorySearchIndex()
+        try await index.synchronize([SearchDocument(clip, imageText: recognized)])
+        for query in ["中文", "zhongwen", "zw", "中文 invoice", "zhong wen"] {
+            #expect(try await index.search(query) == [clip.id], "query: \(query)")
+        }
+        let preferences = isolatedPreferences(); preferences.retention = .forever
+        let board = NSPasteboard(name: .init("ClipShelf-OCR-highlight-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        let model = ClipboardModel(pasteboard: board, storageURL: directory.appendingPathComponent("history.plist"), preferences: preferences,
+                                   imageTextService: service)
+        model.history = History(clips: [clip])
+        await model.waitForImageText()
+        model.query = "中文"; await model.waitForSearch()
+        let chineseBoxes = model.imageTextHighlights(for: clip)
+        #expect(!chineseBoxes.isEmpty)
+        model.query = "invoice"; await model.waitForSearch()
+        #expect(!model.imageTextHighlights(for: clip).isEmpty)
+        #expect(model.imageTextHighlights(for: clip) != chineseBoxes)
+        model.query = ""; await model.waitForSearch()
+        #expect(model.imageTextHighlights(for: clip).isEmpty)
+        #expect(await model.finishPendingStorage())
+    }
+
+    @Test @MainActor func storedImageHistoryIsBackfilledAndReusesCacheAfterRestart() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let historyURL = directory.appendingPathComponent("history.plist")
+        let cacheURL = historyURL.appendingPathExtension("ocr.sqlite")
+        let original = image(1)
+        let history = History(clips: [original])
+        try history.save(to: historyURL)
+        let bytesBefore = try Data(contentsOf: historyURL)
+        let board = NSPasteboard(name: .init("ClipShelf-OCR-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        let preferences = isolatedPreferences(); preferences.retention = .forever
+        let counter = ImageRecognitionProbe(blocked: false)
+        let service = ImageTextService(cacheURL: cacheURL, recognize: { counter.recognize($0) })
+        let model = ClipboardModel(pasteboard: board, storageURL: historyURL, preferences: preferences, imageTextService: service)
+        await model.waitForImageText()
+        model.query = "中文搜索"; await model.waitForSearch()
+        #expect(model.visible.map(\.id) == [original.id])
+        #expect(model.history.clips == history.clips)
+        #expect(try Data(contentsOf: historyURL) == bytesBefore)
+        #expect(await model.finishPendingStorage())
+        let restoredService = ImageTextService(cacheURL: cacheURL, recognize: { _ in throw CocoaError(.featureUnsupported) })
+        let restored = ClipboardModel(pasteboard: board, storageURL: historyURL, preferences: preferences, imageTextService: restoredService)
+        await restored.waitForImageText()
+        restored.query = "zwss"; await restored.waitForSearch()
+        #expect(restored.visible.map(\.id) == [original.id])
+        #expect(restored.imageTextError == nil && counter.calls == 1)
+        #expect(await restored.finishPendingStorage())
+    }
+
+    @Test func cancelledOrFailedRecognitionCannotPoisonTheCache() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("ocr.sqlite")
+        let picture = image(1)
+        let service = ImageTextService(cacheURL: url, recognize: { _ in throw CocoaError(.fileReadCorruptFile) })
+        await #expect(throws: (any Error).self) { try await service.text(for: picture) }
+        #expect(try await service.cachedTexts().isEmpty)
+        let counter = ImageRecognitionProbe(blocked: false)
+        let resumed = ImageTextService(cacheURL: url, recognize: { counter.recognize($0) })
+        resumed.cancelRecognition()
+        await #expect(throws: CancellationError.self) { try await resumed.text(for: picture) }
+        #expect(counter.calls == 0)
+        resumed.resumeRecognition()
+        #expect(!(try await resumed.text(for: picture)).text.isEmpty)
+        #expect(counter.calls == 1)
+    }
+
+    @Test func imageTextCachePersistsEmptyResultsAndPrunesDeletedImages() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("ocr.sqlite")
+        let counter = ImageRecognitionProbe(blocked: false)
+        let service = ImageTextService(cacheURL: url, recognize: { counter.recognize($0) })
+        let first = image(1), blank = image(0)
+        let result = try await service.text(for: first)
+        #expect(!result.text.isEmpty)
+        #expect(try await service.text(for: blank).text.isEmpty)
+        let restored = ImageTextService(cacheURL: url, recognize: { _ in throw CocoaError(.featureUnsupported) })
+        #expect(try await restored.text(for: first) == result)
+        #expect(try await restored.text(for: blank).text.isEmpty)
+        #expect(counter.calls == 2 && counter.offMain)
+        try await service.prune(keeping: [first.fingerprint])
+        #expect(try await service.cachedTexts().keys.sorted() == [first.fingerprint])
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+    }
+
+    @Test @MainActor func existingImagesAreBackfilledWithoutInvalidatingCardsOrSelection() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let counter = ImageRecognitionProbe(blocked: true)
+        defer { counter.release() }
+        let service = ImageTextService(cacheURL: directory.appendingPathComponent("ocr.sqlite"), recognize: { counter.recognize($0) })
+        let picture = image(1), other = clip("ordinary text")
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), imageTextService: service)
+        model.history = History(clips: [picture, other])
+        model.resetSelection()
+        await model.waitForIndex()
+        try await counter.waitForCalls(1)
+        model.moveSelection(1)
+        model.previewID = other.id
+        let scroll = model.selectionScrollID
+        var invalidations = 0
+        let observation = model.objectWillChange.sink { invalidations += 1 }
+        counter.release()
+        await model.waitForImageText()
+        withExtendedLifetime(observation) {}
+        #expect(invalidations == 0)
+        #expect(model.history.clips == [picture, other])
+        #expect(model.selectedID == other.id && model.previewID == other.id)
+        #expect(model.selectionScrollID == scroll)
+        #expect(counter.calls == 1 && counter.offMain && counter.maximumActive == 1)
+        for query in ["中文搜索", "zhongwensousuo", "zwss", "中文 invoice"] {
+            model.query = query; await model.waitForSearch()
+            #expect(model.visible.map(\.id) == [picture.id])
+        }
+    }
+
+    @Test @MainActor func imageTextAddsMatchesWithoutResettingCurrentSearchFocus() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let counter = ImageRecognitionProbe(blocked: true)
+        defer { counter.release() }
+        let service = ImageTextService(cacheURL: directory.appendingPathComponent("ocr.sqlite"), recognize: { counter.recognize($0) })
+        let picture = image(1), other = clip("中文搜索")
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), imageTextService: service)
+        model.history = History(clips: [picture, other])
+        try await counter.waitForCalls(1)
+        model.query = "中文搜索"; await model.waitForSearch()
+        #expect(model.visible.map(\.id) == [other.id])
+        model.previewID = other.id
+        counter.release()
+        await model.waitForImageText()
+        #expect(model.visible.map(\.id) == [picture.id, other.id])
+        #expect(model.selectedID == other.id && model.previewID == other.id)
+        #expect(!model.searchPending)
+    }
+
+    @Test @MainActor func deletedOrEditedImagesCannotReceiveStaleOCRResults() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let counter = ImageRecognitionProbe(blocked: true)
+        defer { counter.release() }
+        let service = ImageTextService(cacheURL: directory.appendingPathComponent("ocr.sqlite"), recognize: { counter.recognize($0) })
+        let original = image(1)
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), imageTextService: service)
+        model.history = History(clips: [original])
+        try await counter.waitForCalls(1)
+        try model.history.editImage(id: original.id, png: Data([2]))
+        let edited = try #require(model.history.clips.first)
+        counter.release()
+        await model.waitForImageText()
+        model.query = "中文搜索"; await model.waitForSearch()
+        #expect(model.visible.isEmpty)
+        model.query = "新图片"; await model.waitForSearch()
+        #expect(model.visible.map(\.id) == [original.id])
+        #expect(counter.calls == 2 && counter.maximumActive == 1)
+        #expect(try await service.cachedTexts().keys.sorted() == [edited.fingerprint])
+        model.remove(edited)
+        await model.waitForImageText()
+        #expect(model.history.clips.isEmpty)
+        #expect(try await service.cachedTexts().isEmpty)
+    }
+
+    @Test @MainActor func chineseCompositionDefersImageBackfill() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let counter = ImageRecognitionProbe(blocked: false)
+        let service = ImageTextService(cacheURL: directory.appendingPathComponent("ocr.sqlite"), recognize: { counter.recognize($0) })
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), imageTextService: service)
+        let field = ComposingImageSearchField()
+        model.searchField = field
+        model.history = History(clips: [image(1)])
+        try await Task.sleep(for: .milliseconds(650))
+        #expect(counter.calls == 0)
+        field.editor.composing = false
+        await model.waitForImageText()
+        #expect(counter.calls == 1)
+    }
+
+    @Test @MainActor func interruptedOCRRetriesAfterInteractionInsteadOfMarkingTheImageFailed() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let counter = ImageRecognitionProbe(blocked: false)
+        let service = ImageTextService(cacheURL: directory.appendingPathComponent("ocr.sqlite"), recognize: {
+            let text = counter.recognize($0)
+            if counter.calls == 1 { throw NSError(domain: VNErrorDomain, code: VNErrorCode.requestCancelled.rawValue) }
+            return text
+        })
+        let picture = image(1)
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences(), imageTextService: service)
+        model.history = History(clips: [picture])
+        await model.waitForImageText()
+        #expect(counter.calls == 2 && model.imageTextError == nil)
+        model.query = "中文搜索"; await model.waitForSearch()
+        #expect(model.visible.map(\.id) == [picture.id])
+    }
+
     private func clip(_ text: String, title: String? = nil) -> Clip {
         var clip = Clip(kind: .text, text: text, sourceName: "测试来源", sourceBundle: "", items: [], identity: Data(text.utf8))
         clip.title = title
@@ -241,6 +477,44 @@ struct ClipboardSearchTests {
         await model.waitForSearch()
         #expect(model.visible.map(\.id) == [item.id])
     }
+}
+
+private final class ImageRecognitionProbe: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var blocked: Bool
+    private var count = 0
+    private var active = 0
+    private var peak = 0
+    private var background = true
+    init(blocked: Bool) { self.blocked = blocked }
+    var calls: Int { condition.lock(); defer { condition.unlock() }; return count }
+    var maximumActive: Int { condition.lock(); defer { condition.unlock() }; return peak }
+    var offMain: Bool { condition.lock(); defer { condition.unlock() }; return background }
+    func recognize(_ data: Data) -> String {
+        condition.lock()
+        count += 1; active += 1; peak = max(peak, active); background = background && !Thread.isMainThread
+        while blocked { condition.wait() }
+        active -= 1; condition.unlock()
+        if data.first == 0 { return "" }
+        return data.first == 2 ? "新图片" : "中文搜索 Invoice 2026"
+    }
+    func release() { condition.lock(); blocked = false; condition.broadcast(); condition.unlock() }
+    func waitForCalls(_ expected: Int) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        while calls < expected {
+            guard ContinuousClock.now < deadline else { throw CocoaError(.coderReadCorrupt) }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+}
+
+@MainActor private final class ComposingImageSearchField: NSTextField {
+    final class Editor: NSTextView {
+        var composing = true
+        override func hasMarkedText() -> Bool { composing }
+    }
+    let editor = Editor()
+    override func currentEditor() -> NSText? { editor }
 }
 
 private actor FailingIndex: ClipboardSearchIndex {

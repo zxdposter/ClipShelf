@@ -197,7 +197,8 @@ struct ShelfView: View {
             ShelfSearchField(text: $model.query, submit: model.submitSearch,
                              register: { model.searchField = $0 },
                              changed: { if !model.searchShown { model.searchShown = true } },
-                             focusChanged: { if model.searchFocused != $0 { model.searchFocused = $0 } }, moveSuggestion: model.moveSourceSuggestion)
+                             focusChanged: { if model.searchFocused != $0 { model.searchFocused = $0 } },
+                             moveSuggestion: model.moveSourceSuggestion, interacted: model.noteImageTextInteraction)
                 .frame(height: 22)
                 .transaction { $0.animation = nil }
                 .opacity(model.searchShown ? 1 : 0)
@@ -396,6 +397,7 @@ struct ClipCardFaceState: Equatable {
     let renameDraft: String
     let linkPreviews: Bool
     let refreshID: UUID
+    let imageHighlights: [CGRect]
 
     @MainActor init(clip: Clip, quickPasteNumber: Int?, selected: Bool, model: ClipboardModel, language: AppLanguage) {
         self.clip = clip
@@ -407,6 +409,7 @@ struct ClipCardFaceState: Equatable {
         renameDraft = renaming ? model.renameDraft : ""
         linkPreviews = model.preferences.linkPreviews
         refreshID = model.presentationID
+        imageHighlights = clip.kind == .image ? model.imageTextHighlights(for: clip) : []
     }
 }
 
@@ -434,7 +437,7 @@ private struct ClipCardFace: View, Equatable {
                 } else if let title = clip.title {
                     Text(title).font(.system(size: 10.5, weight: .medium)).lineLimit(1)
                 }
-                ClipCardContent(clip: clip, linkPreviews: state.linkPreviews, refreshID: state.refreshID)
+                ClipCardContent(clip: clip, linkPreviews: state.linkPreviews, refreshID: state.refreshID, imageHighlights: state.imageHighlights)
                     .equatable().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 ClipCardFooter(clip: clip, quickPasteNumber: quickPasteNumber, language: language).equatable()
                     .offset(y: 4)
@@ -543,6 +546,7 @@ private struct ClipCardContent: View, Equatable {
     let clip: Clip
     let linkPreviews: Bool
     let refreshID: UUID
+    let imageHighlights: [CGRect]
     private var image: NSImage? {
         clip.items.flatMap { $0 }.first(where: { $0.type == "public.png" || $0.type == "public.tiff" }).flatMap { NSImage(data: $0.data) }
     }
@@ -557,6 +561,20 @@ private struct ClipCardContent: View, Equatable {
             }
         } else if let image {
             Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay {
+                    GeometryReader { geometry in
+                        let scale = min(geometry.size.width / max(image.size.width, 1), geometry.size.height / max(image.size.height, 1))
+                        let width = image.size.width * scale
+                        let height = image.size.height * scale
+                        ForEach(Array(imageHighlights.enumerated()), id: \.offset) { _, box in
+                            RoundedRectangle(cornerRadius: 2).fill(Color.yellow.opacity(0.3))
+                                .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color.orange.opacity(0.6), lineWidth: 0.5))
+                                .frame(width: box.width * width, height: box.height * height)
+                                .position(x: (geometry.size.width - width) / 2 + box.midX * width,
+                                          y: (geometry.size.height - height) / 2 + (1 - box.midY) * height)
+                        }
+                    }.allowsHitTesting(false)
+                }
                 .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
         } else {
             Text(cardClipText(clip)).font(.system(size: 13)).lineSpacing(3.5).multilineTextAlignment(.leading)

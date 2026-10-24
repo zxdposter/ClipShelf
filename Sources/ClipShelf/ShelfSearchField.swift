@@ -8,6 +8,7 @@ struct ShelfSearchField: NSViewRepresentable {
     let changed: () -> Void
     var focusChanged: (Bool) -> Void = { _ in }
     var moveSuggestion: (Int) -> Bool = { _ in false }
+    var interacted: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> SearchField {
@@ -36,6 +37,7 @@ struct ShelfSearchField: NSViewRepresentable {
         func controlTextDidBeginEditing(_ notification: Notification) { parent.focusChanged(true) }
         func controlTextDidEndEditing(_ notification: Notification) { parent.focusChanged(false) }
         func controlTextDidChange(_ notification: Notification) {
+            parent.interacted()
             guard let field = notification.object as? NSTextField,
                   (field.currentEditor() as? NSTextView)?.hasMarkedText() != true,
                   parent.text != field.stringValue else { return }

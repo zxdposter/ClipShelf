@@ -9,12 +9,13 @@ final class SearchInput: ObservableObject {
 
 @MainActor
 final class ClipboardModel: ObservableObject {
-    @Published var history = History() { didSet { refreshSourceApps(); scheduleSearch(indexChanged: true) } }
+    @Published var history = History() { didSet { refreshSourceApps(); scheduleSearch(indexChanged: true); scheduleImageTextRecognition() } }
     let searchInput = SearchInput()
     var query: String {
         get { searchInput.text }
         set {
             guard newValue != searchInput.text else { return }
+            noteImageTextInteraction()
             searchInput.text = newValue
             if sourceSuggestionIndex != nil { sourceSuggestionIndex = nil }
             scheduleSearch()
@@ -23,6 +24,7 @@ final class ClipboardModel: ObservableObject {
     @Published private(set) var searchMatches = Set<UUID>()
     @Published private(set) var searchPending = false
     @Published private(set) var hasSearchResults = false
+    @Published private(set) var imageSearchHighlights: [UUID: [CGRect]] = [:]
     private let searchIndex: any ClipboardSearchIndex
     private let fallbackIndex = MemorySearchIndex()
     private var scheduledQuery = ""
@@ -33,7 +35,10 @@ final class ClipboardModel: ObservableObject {
     private var searchRevision = 0
     private(set) var searchError: String?
 
-    private func scheduleSearch(indexChanged: Bool = false) {
+    private func searchDocuments() -> [SearchDocument] {
+        history.clips.map { SearchDocument($0, imageText: imageTexts[$0.fingerprint]) }
+    }
+    private func scheduleSearch(indexChanged: Bool = false, preservingSelection: Bool = false) {
         guard !locked else { return }
         let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard indexChanged || value != scheduledQuery else { return }
@@ -42,7 +47,7 @@ final class ClipboardModel: ObservableObject {
         let revision = searchRevision
         searchTask?.cancel()
         if indexChanged {
-            let snapshot = history.clips.map(SearchDocument.init)
+            let snapshot = searchDocuments()
             indexRevision += 1
             let target = indexRevision
             let previous = indexTask
@@ -57,13 +62,14 @@ final class ClipboardModel: ObservableObject {
             }
         }
         guard !value.isEmpty else {
+            if !imageSearchHighlights.isEmpty { imageSearchHighlights = [:] }
             if hasSearchResults { hasSearchResults = false }
             if searchPending { searchPending = false }
             if !searchMatches.isEmpty { searchMatches = [] }
             if !indexChanged { resetSelection() }
             return
         }
-        if !searchPending { searchPending = true }
+        if !preservingSelection && !searchPending { searchPending = true }
         let index = searchIndex
         searchTask = Task(priority: .userInitiated) { [weak self] in
             do {
@@ -75,7 +81,7 @@ final class ClipboardModel: ObservableObject {
                     indexed = await self.indexTask?.value == true
                     try Task.checkCancellation()
                 }
-                let snapshot = self.history.clips.map(SearchDocument.init)
+                let snapshot = self.searchDocuments()
                 let ids: Set<UUID>
                 var failure = indexed ? nil : "Spotlight index unavailable; background search used"
                 if indexed {
@@ -94,14 +100,27 @@ final class ClipboardModel: ObservableObject {
                 }
                 guard !Task.isCancelled, self.searchRevision == revision else { return }
                 self.searchError = failure
+                var highlights: [UUID: [CGRect]] = [:]
+                for clip in self.history.clips where clip.kind == .image && ids.contains(clip.id) {
+                    let boxes = self.imageTexts[clip.fingerprint]?.matchingRegions(value) ?? []
+                    if !boxes.isEmpty { highlights[clip.id] = boxes }
+                }
+                if self.imageSearchHighlights != highlights { self.imageSearchHighlights = highlights }
                 if !self.hasSearchResults { self.hasSearchResults = true }
                 if self.searchMatches != ids { self.searchMatches = ids }
-                self.searchPending = false
-                self.resetSelection()
+                if self.searchPending { self.searchPending = false }
+                if preservingSelection {
+                    let visible = Set(self.visible.map(\.id))
+                    if !self.selection.ids.isSubset(of: visible) || (self.selectedID == nil && !visible.isEmpty) {
+                        var next = self.selection
+                        next.reset(in: self.visible.map(\.id))
+                        if next != self.selection { self.selection = next }
+                    }
+                } else { self.resetSelection() }
             } catch {
                 guard !Task.isCancelled, let self, self.searchRevision == revision else { return }
                 self.searchError = error.localizedDescription
-                self.searchPending = false
+                if self.searchPending { self.searchPending = false }
             }
         }
     }
@@ -113,8 +132,95 @@ final class ClipboardModel: ObservableObject {
         }
     }
     func waitForIndex() async { _ = await indexTask?.value }
+    private let imageTextService: ImageTextService?
+    private var imageTexts: [String: RecognizedImageText] = [:]
+    func imageTextHighlights(for clip: Clip) -> [CGRect] {
+        imageSearchHighlights[clip.id] ?? []
+    }
+    private var failedImageTexts = Set<String>()
+    private var imageTextCacheLoaded = false
+    private var imageTextTask: Task<Void, Never>?
+    private var imageTextStopped = false
+    private var lastImageTextInteraction = ContinuousClock.now
+    private(set) var imageTextError: String?
+
+    func noteImageTextInteraction() {
+        lastImageTextInteraction = .now
+        imageTextService?.interruptRecognition()
+    }
+    private var imageTextCanUpdate: Bool {
+        ContinuousClock.now >= lastImageTextInteraction.advanced(by: .milliseconds(400)) && !searchPending &&
+            (searchField?.currentEditor() as? NSTextView)?.hasMarkedText() != true
+    }
+    private func scheduleImageTextRecognition() {
+        guard !locked, !imageTextStopped, imageTextService != nil, imageTextTask == nil else { return }
+        let fingerprints = Set(history.clips.filter { $0.kind == .image }.map(\.fingerprint))
+        imageTexts = imageTexts.filter { fingerprints.contains($0.key) }
+        failedImageTexts.formIntersection(fingerprints)
+        imageTextTask = Task(priority: .background) { [weak self] in
+            defer {
+                self?.imageTextTask = nil
+                if let self {
+                    let current = Set(self.history.clips.filter { $0.kind == .image }.map(\.fingerprint))
+                    self.imageTexts = self.imageTexts.filter { current.contains($0.key) }
+                    self.failedImageTexts.formIntersection(current)
+                    if self.history.clips.contains(where: {
+                        $0.kind == .image && self.imageTexts[$0.fingerprint] == nil && !self.failedImageTexts.contains($0.fingerprint)
+                    }) { self.scheduleImageTextRecognition() }
+                }
+            }
+            guard let service = self?.imageTextService else { return }
+            if self?.imageTextCacheLoaded == false {
+                self?.imageTextCacheLoaded = true
+                do {
+                    let cached = try await service.cachedTexts()
+                    while self?.imageTextCanUpdate == false {
+                        do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+                    }
+                    guard !Task.isCancelled, let self else { return }
+                    let current = Set(self.history.clips.filter { $0.kind == .image }.map(\.fingerprint))
+                    self.imageTexts = cached.filter { current.contains($0.key) }
+                    if !self.imageTexts.isEmpty { self.scheduleSearch(indexChanged: true, preservingSelection: true) }
+                } catch { self?.imageTextError = error.localizedDescription }
+            }
+            while !Task.isCancelled {
+                while self?.imageTextCanUpdate == false {
+                    do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+                }
+                guard let clip = self?.history.clips.first(where: {
+                    $0.kind == .image && self?.imageTexts[$0.fingerprint] == nil && self?.failedImageTexts.contains($0.fingerprint) == false
+                }) else { break }
+                do {
+                    let result = try await service.text(for: clip)
+                    while self?.imageTextCanUpdate == false {
+                        do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+                    }
+                    guard !Task.isCancelled else { return }
+                    if let self, self.history.clips.contains(where: { $0.kind == .image && $0.fingerprint == clip.fingerprint }) {
+                        self.imageTexts[clip.fingerprint] = result
+                        self.scheduleSearch(indexChanged: true, preservingSelection: true)
+                    }
+                } catch {
+                    if Task.isCancelled || error is CancellationError { return }
+                    if !ImageTextService.wasInterrupted(error) {
+                        // shortcut: failed images retry on next launch, not in a CPU-consuming retry loop.
+                        self?.failedImageTexts.insert(clip.fingerprint)
+                        self?.imageTextError = error.localizedDescription
+                    }
+                }
+                do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            }
+            guard !Task.isCancelled, let self else { return }
+            do { try await service.prune(keeping: Set(self.history.clips.filter { $0.kind == .image }.map(\.fingerprint))) }
+            catch { self.imageTextError = error.localizedDescription }
+        }
+    }
+    func waitForImageText() async {
+        while let task = imageTextTask { await task.value }
+        await waitForIndex(); await waitForSearch()
+    }
     weak var searchField: NSTextField?
-    @Published var searchFocused = false
+    @Published var searchFocused = false { didSet { if searchFocused { noteImageTextInteraction() } } }
     @Published private(set) var sourceApps: [SourceApplication] = []
     @Published var selectedSourceIDs = Set<String>() {
         didSet {
@@ -217,6 +323,7 @@ final class ClipboardModel: ObservableObject {
         let end = min(max(range.upperBound, start), count)
         let next = start..<min(end, start + 9)
         guard quickPasteVisibleRange != next else { return }
+        noteImageTextInteraction()
         // Scrolling without the modifier must not invalidate every card just to update hidden hints.
         if quickPasteHintsShown && preferences.quickPasteFromVisibleCards { objectWillChange.send() }
         quickPasteVisibleRange = next
@@ -283,12 +390,14 @@ final class ClipboardModel: ObservableObject {
         if selection != next { selection = next }
     }
     func selectClip(_ clip: Clip, modifiers: NSEvent.ModifierFlags = []) {
+        noteImageTextInteraction()
         var next = selection
         next.select(clip.id, in: visible.map(\.id), command: modifiers.contains(.command), shift: modifiers.contains(.shift))
         if next != selection { selection = next }
         if selectionScrollID != nil { selectionScrollID = nil }
     }
     func moveSelection(_ direction: Int, extending: Bool = false) {
+        noteImageTextInteraction()
         var next = selection
         next.move(direction, in: visible.map(\.id), extending: extending)
         guard next != selection else { return }
@@ -491,7 +600,7 @@ final class ClipboardModel: ObservableObject {
         return changed && !storageFailed
     }
 
-    init(demo: Bool = false, pasteboard: NSPasteboard = .general, storageURL: URL? = nil, preferences: Preferences? = nil, searchIndex: (any ClipboardSearchIndex)? = nil) {
+    init(demo: Bool = false, pasteboard: NSPasteboard = .general, storageURL: URL? = nil, preferences: Preferences? = nil, searchIndex: (any ClipboardSearchIndex)? = nil, imageTextService: ImageTextService? = nil) {
         self.searchIndex = searchIndex ?? MemorySearchIndex()
         self.preferences = preferences ?? Preferences()
         self.demo = demo
@@ -499,11 +608,13 @@ final class ClipboardModel: ObservableObject {
         self.storageURL = storageURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ClipShelf/history.plist")
         historyWriter = HistoryWriter(url: self.storageURL)
-        if demo { seedDemo(); refreshSourceApps(); scheduleSearch(indexChanged: true); return }
+        self.imageTextService = imageTextService ?? (demo ? nil : ImageTextService(cacheURL: self.storageURL.appendingPathExtension("ocr.sqlite")))
+        if demo { seedDemo(); refreshSourceApps(); scheduleSearch(indexChanged: true); scheduleImageTextRecognition(); return }
         do { history = try History.load(from: self.storageURL) }
         catch { locked = true; storageFailed = true; message = error.localizedDescription }
         refreshSourceApps()
         scheduleSearch(indexChanged: true)
+        scheduleImageTextRecognition()
         // Start with the current counter so opening the app doesn't import an old clipboard.
         lastChange = pasteboard.changeCount
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -627,6 +738,10 @@ final class ClipboardModel: ObservableObject {
         return !storageFailed
     }
     func finishPendingStorage() async -> Bool {
+        imageTextStopped = true
+        imageTextTask?.cancel()
+        imageTextService?.cancelRecognition()
+        await imageTextTask?.value
         timer?.fireDate = .distantFuture
         defer { timer?.fireDate = Date().addingTimeInterval(0.25) }
         await captureTask?.value
@@ -637,6 +752,10 @@ final class ClipboardModel: ObservableObject {
             }
             guard revision == storageRevision else { continue }
             applyStorageResult(result)
+            if storageFailed {
+                imageTextService?.resumeRecognition()
+                imageTextStopped = false; scheduleImageTextRecognition()
+            }
             return !storageFailed
         }
     }
