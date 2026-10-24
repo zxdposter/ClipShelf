@@ -14,9 +14,9 @@
 
 ## 下载
 
-[**下载 ClipShelf 0.12.0 Mac 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.0/ClipShelf-0.12.0-macOS-arm64.dmg) · [ZIP 下载](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.0/ClipShelf-0.12.0-macOS-arm64.zip) · [更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.12.0)
+[**下载 Apple 芯片版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.1/ClipShelf-0.12.1-macOS-arm64.dmg) · [**下载 Intel 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.1/ClipShelf-0.12.1-macOS-x86_64.dmg) · [ZIP 下载与更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.12.1)
 
-需要 **macOS 14 或更新版本**，以及搭载 **Apple 芯片（M1 或更新）** 的 Mac。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。
+**0.12.1** 需要 **macOS 14 或更新版本**，分别提供 **Apple 芯片和 Intel** 安装包，Homebrew 会自动选择对应架构。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。Intel 交叉编译与签名检查通过，尚未在 Intel 真机测试。
 
 此版本尚未经过 Apple 公证。如果 macOS 阻止打开，请确认下载来源后，在 **系统设置 → 隐私与安全性 → 仍要打开** 中允许启动。
 
@@ -133,6 +133,17 @@ brew install --cask zxdposter/tap/clipshelf
 | 关闭搜索或收起面板 | **Esc** |
 
 可在设置中修改呼出、顺序粘贴、收藏集切换快捷键及粘贴修饰键。输入框内仍保留常用的文字编辑快捷键。
+
+## 从源码构建
+
+安装 macOS 命令行工具和[发布签名身份](signing/README.md)后运行：
+
+```sh
+./build.sh dist
+lipo -archs dist/ClipShelf.app/Contents/MacOS/ClipShelf
+```
+
+脚本分别构建 `arm64` 和 `x86_64`，合并为一个 Universal 应用，检查两种架构后再签名。使用 `./build.sh dist arm64` 或 `./build.sh dist x86_64` 可构建单一架构。Apple 芯片 Mac 可以交叉编译 Intel 部分，两种架构均要求 macOS 14 或更新版本。尚未在 Intel 真机测试；图片选字会在运行时检查系统是否支持。
 
 ## 自己决定保存什么
 

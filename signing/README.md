@@ -4,6 +4,13 @@
 verifies the signature. It stops before building if that identity is unavailable;
 there is no ad-hoc fallback.
 
+The script builds `arm64` and `x86_64` separately, verifies both slices in the
+combined Universal executable, then signs the complete app with this identity.
+For architecture-specific release packages, pass `arm64` or `x86_64` as the
+second argument to `build.sh`; each complete app is signed separately.
+Do not merge or replace executable slices after signing; doing so invalidates
+the signature.
+
 - Certificate SHA-1: `E6124AB6C7079D7F1E764992CA61167210660010`
 - Bundle identifier: `local.clipshelf.app`
 - Certificate expires: 2036-10-20 UTC

@@ -14,9 +14,9 @@ A clipboard manager for Mac, with searchable history, collections, and a card-ba
 
 ## Download
 
-[**Download ClipShelf 0.12.0 for Mac**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.0/ClipShelf-0.12.0-macOS-arm64.dmg) · [ZIP download](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.0/ClipShelf-0.12.0-macOS-arm64.zip) · [Release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.12.0)
+[**Download for Apple silicon**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.1/ClipShelf-0.12.1-macOS-arm64.dmg) · [**Download for Intel**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.1/ClipShelf-0.12.1-macOS-x86_64.dmg) · [ZIP downloads and release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.12.1)
 
-Requires **macOS 14 or later** and a Mac with **Apple silicon (M1 or later)**. Open the DMG and drag ClipShelf into Applications.
+**0.12.1** requires **macOS 14 or later** and supports **Apple silicon and Intel** Macs with separate downloads. Homebrew automatically chooses the matching architecture. Open the DMG and drag ClipShelf into Applications. Intel cross-compilation and signature checks pass; Intel hardware testing is still pending.
 
 This release has not been notarized by Apple. If macOS blocks opening it, review the download and allow it in **System Settings → Privacy & Security → Open Anyway**.
 
@@ -133,6 +133,17 @@ Changes take effect immediately and your choice is remembered after restarting. 
 | Close search or hide the shelf | **Esc** |
 
 Activation shortcuts and paste modifiers can be customized in Settings. Text fields keep their usual editing shortcuts.
+
+## Build from source
+
+With the macOS Command Line Tools and the [release signing identity](signing/README.md) installed:
+
+```sh
+./build.sh dist
+lipo -archs dist/ClipShelf.app/Contents/MacOS/ClipShelf
+```
+
+The script builds both `arm64` and `x86_64`, combines them into one Universal app, checks both architectures, and signs the result. Use `./build.sh dist arm64` or `./build.sh dist x86_64` for a single architecture. It can cross-compile the Intel slice on an Apple silicon Mac. Both architectures require macOS 14 or later. Intel hardware testing is still pending; image text selection checks system support at runtime.
 
 ## You choose what to keep
 
