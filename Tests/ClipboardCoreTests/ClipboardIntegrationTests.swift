@@ -6,6 +6,60 @@ import ClipboardCore
 
 struct ClipboardIntegrationTests {
     @Test @MainActor
+    func imageFileClassificationMigratesAndKeepsClipboardFormats() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let board = NSPasteboard(name: .init("ClipShelf-image-classification-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        let url = directory.appendingPathComponent("history.plist")
+        let image = Data([1, 2, 3])
+        let file = "file:///tmp/example.png"
+        let items = [[Representation(type: "public.file-url", data: Data(file.utf8)), Representation(type: "public.png", data: image)]]
+        var old = Clip(kind: .files, text: "example.png", sourceName: "Finder", sourceBundle: "com.apple.finder",
+                       items: items, identity: Data(file.utf8))
+        old.title = "保留名称"
+        var history = History(clips: [old])
+        let collection = try history.addBoard(name: "收藏", color: 1)
+        history.addToBoard(clipID: old.id, boardID: collection)
+        try history.save(to: url)
+        let preferences = isolatedPreferences(); preferences.retention = .forever
+        let service = ImageTextService(cacheURL: directory.appendingPathComponent("ocr.sqlite"), recognize: { _ in "中文搜索" })
+        let model = ClipboardModel(pasteboard: board, storageURL: url, preferences: preferences, imageTextService: service)
+        await model.waitForImageText()
+        let corrected = try #require(model.history.clips.first)
+        #expect(corrected.kind == .image && corrected.id == old.id)
+        #expect(corrected.title == old.title && corrected.copiedAt == old.copiedAt)
+        #expect(corrected.items == old.items && corrected.text == old.text)
+        #expect(model.history.boards.map(\.id) == history.boards.map(\.id))
+        #expect(model.history.boards.first(where: { $0.id == collection })?.clipIDs == [old.id])
+        for query in ["中文", "zhongwen", "zw"] {
+            model.query = query; await model.waitForSearch()
+            #expect(model.visible.map(\.id) == [old.id])
+        }
+        let item = NSPasteboardItem(); item.setString(file, forType: .fileURL); item.setData(image, forType: .png)
+        board.clearContents(); #expect(board.writeObjects([item]))
+        await model.capture(expectedChange: board.changeCount, source: nil)
+        #expect(model.history.clips.count == 1 && model.history.clips.first?.id == old.id)
+        #expect(model.copy(corrected))
+        #expect(board.string(forType: .fileURL) == file && board.data(forType: .png) == image)
+        for path in ["file:///tmp/example.pdf", "file:///tmp/folder.png/"] {
+            let fileItem = NSPasteboardItem(); fileItem.setString(path, forType: .fileURL); fileItem.setData(image, forType: .png)
+            board.clearContents(); #expect(board.writeObjects([fileItem]))
+            await model.capture(expectedChange: board.changeCount, source: nil)
+            #expect(model.history.clips.first?.kind == .files)
+        }
+        let second = NSPasteboardItem(); second.setString("file:///tmp/another.png", forType: .fileURL)
+        let first = NSPasteboardItem(); first.setString(file, forType: .fileURL); first.setData(image, forType: .png)
+        board.clearContents(); #expect(board.writeObjects([first, second]))
+        await model.capture(expectedChange: board.changeCount, source: nil)
+        #expect(model.history.clips.first?.kind == .files)
+        #expect(await model.finishPendingStorage())
+        #expect(try History.load(from: url).clips == model.history.clips)
+        var restored = try History.load(from: url)
+        #expect(try !restored.reclassifyImageFiles())
+    }
+
+    @Test @MainActor
     func failedBackgroundSaveBlocksQuitAndRetriesWithoutLosingCards() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

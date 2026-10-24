@@ -612,6 +612,9 @@ final class ClipboardModel: ObservableObject {
         if demo { seedDemo(); refreshSourceApps(); scheduleSearch(indexChanged: true); scheduleImageTextRecognition(); return }
         do { history = try History.load(from: self.storageURL) }
         catch { locked = true; storageFailed = true; message = error.localizedDescription }
+        if history.clips.contains(where: { $0.kind == .files && singleImageRepresentation(in: $0.items) != nil }) {
+            commit { try $0.reclassifyImageFiles() }
+        }
         refreshSourceApps()
         scheduleSearch(indexChanged: true)
         scheduleImageTextRecognition()
@@ -676,12 +679,12 @@ final class ClipboardModel: ObservableObject {
         let kind: ClipKind
         let text: String
         let identity: Data
-        if !files.isEmpty {
+        if let image = singleImageRepresentation(in: items) {
+            kind = .image; text = files.compactMap { URL(string: $0)?.lastPathComponent }.first ?? "图片"; identity = image.data
+        } else if !files.isEmpty {
             kind = .files
             text = files.compactMap { URL(string: $0)?.lastPathComponent }.joined(separator: "\n")
             identity = (try? JSONEncoder().encode(files)) ?? Data(files.joined(separator: "\n").utf8)
-        } else if let image = flat.first(where: { $0.type == "public.png" || $0.type == "public.tiff" }) {
-            kind = .image; text = "图片"; identity = image.data
         } else if let string = pasteboard.string(forType: .string), !string.isEmpty {
             let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
             let url = URL(string: trimmed)

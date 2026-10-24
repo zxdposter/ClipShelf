@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import UniformTypeIdentifiers
 
 public enum ClipKind: String, Codable, CaseIterable, Sendable {
     case text, link, image, files
@@ -9,6 +10,19 @@ public struct Representation: Codable, Equatable, Sendable {
     public let type: String
     public let data: Data
     public init(type: String, data: Data) { self.type = type; self.data = data }
+}
+
+public func singleImageRepresentation(in items: [[Representation]]) -> Representation? {
+    guard items.count == 1, let item = items.first else { return nil }
+    let files = item.filter { $0.type == "public.file-url" }
+    if !files.isEmpty {
+        // A PDF or folder can also provide a thumbnail; only image files take precedence.
+        guard files.count == 1, let value = String(data: files[0].data, encoding: .utf8),
+              let url = URL(string: value), url.isFileURL, !url.hasDirectoryPath,
+              (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true,
+              UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true else { return nil }
+    }
+    return item.first { $0.type == "public.png" || $0.type == "public.tiff" }
 }
 
 public struct Clip: Codable, Identifiable, Equatable, Sendable {
@@ -196,6 +210,16 @@ public struct History: Sendable {
         let edited = Clip(kind: .image, text: old.text, sourceName: old.sourceName, sourceBundle: old.sourceBundle,
                           items: [[Representation(type: "public.png", data: png)]], identity: png, copiedAt: old.copiedAt)
         try replace(id: id, with: edited)
+    }
+    @discardableResult public mutating func reclassifyImageFiles() throws -> Bool {
+        let images = clips.filter { $0.kind == .files && singleImageRepresentation(in: $0.items) != nil }
+        for old in images {
+            guard let image = singleImageRepresentation(in: old.items) else { continue }
+            let corrected = Clip(kind: .image, text: old.text, sourceName: old.sourceName, sourceBundle: old.sourceBundle,
+                                 items: old.items, identity: image.data, copiedAt: old.copiedAt)
+            try replace(id: old.id, with: corrected)
+        }
+        return !images.isEmpty
     }
     private mutating func replace(id: UUID, with replacement: Clip) throws {
         guard let old = clips.first(where: { $0.id == id }) else { return }
