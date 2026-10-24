@@ -71,7 +71,6 @@ final class Preferences: ObservableObject {
     @Published var imageEnabled: Bool { didSet { defaults.set(imageEnabled, forKey: "capture.image") } }
     @Published var filesEnabled: Bool { didSet { defaults.set(filesEnabled, forKey: "capture.files") } }
     @Published var excludedApps: String { didSet { defaults.set(excludedApps, forKey: "excludedApps") } }
-    @Published var historyLimit: Int { didSet { defaults.set(historyLimit, forKey: "historyLimit") } }
     @Published var shortcut: ShelfShortcut { didSet { defaults.set(shortcut.rawValue, forKey: "shortcut") } }
 
     @Published var soundEnabled: Bool { didSet { defaults.set(soundEnabled, forKey: "soundEnabled") } }
@@ -121,8 +120,6 @@ final class Preferences: ObservableObject {
         imageEnabled = defaults.object(forKey: "capture.image") as? Bool ?? true
         filesEnabled = defaults.object(forKey: "capture.files") as? Bool ?? true
         excludedApps = defaults.string(forKey: "excludedApps") ?? "com.apple.Passwords\ncom.apple.keychainaccess"
-        let limit = defaults.integer(forKey: "historyLimit")
-        historyLimit = [50, 100, 200].contains(limit) ? limit : 200
         shortcut = ShelfShortcut(rawValue: defaults.string(forKey: "shortcut") ?? "") ?? .shiftCommandV
         soundEnabled = defaults.object(forKey: "soundEnabled") as? Bool ?? true
         pasteDestination = PasteDestination(rawValue: defaults.string(forKey: "pasteDestination") ?? "") ?? .activeApplication

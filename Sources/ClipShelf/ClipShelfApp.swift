@@ -466,6 +466,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func quit() { NSApp.terminate(nil) }
     func windowShouldClose(_ sender: NSWindow) -> Bool { hideWindow(); return false }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task {
+            let saved = await model.finishPendingStorage()
+            if !saved { showWindow() }
+            sender.reply(toApplicationShouldTerminate: saved)
+        }
+        return .terminateLater
+    }
     func applicationWillTerminate(_ notification: Notification) {
         if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }

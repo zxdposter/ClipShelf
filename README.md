@@ -102,6 +102,7 @@ Activation shortcuts and paste modifiers can be customized in Settings. Text fie
 ## You choose what to keep
 
 - Keep your clipboard history on your Mac, without cloud sync.
+- History expires only by your chosen retention period, with no item count, individual size, or total size limit; cards in collections do not expire. Changes are saved incrementally in background SQLite transactions, and the original archive is backed up during migration.
 - Pause collection whenever you want.
 - Exclude apps you do not want to save content from.
 - Skip marked confidential or temporary content.

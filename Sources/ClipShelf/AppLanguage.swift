@@ -105,7 +105,7 @@ final class AppLocalization: ObservableObject {
         "将快捷方式重置为默认…": "Reset Shortcuts to Defaults…",
         "不限": "Forever",
         "永久保留": "Keep Forever",
-        "200 条和 50 MB 的容量上限仍然适用。": "The limits of 200 items and 50 MB still apply.",
+        "仅按保留时间清理，不限制历史条数、单条大小和总容量。": "History is cleared only by retention period, with no item count, individual size, or total size limit.",
         "保留1%@": "Keep for 1 %@",
         "删除%@快捷键": "Remove %@ shortcut",
         "开机启动设置失败：%@": "Could not change login settings: %@",

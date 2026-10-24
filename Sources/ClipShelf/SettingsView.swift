@@ -301,7 +301,7 @@ struct SettingsView: View {
                 }.buttonStyle(.plain).accessibilityLabel(period == .forever ? L("永久保留") : L("保留1%@", period.title))
                     .accessibilityAddTraits(preferences.retention == period ? .isSelected : [])
             }
-        }.help(L("200 条和 50 MB 的容量上限仍然适用。"))
+        }.help(L("仅按保留时间清理，不限制历史条数、单条大小和总容量。"))
     }
     private func shortcutRow(_ action: ShortcutAction) -> some View {
         HStack {

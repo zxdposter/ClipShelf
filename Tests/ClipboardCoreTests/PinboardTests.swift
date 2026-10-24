@@ -14,7 +14,8 @@ struct PinboardTests {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: url) }
         let first = clip("pinned")
-        try PropertyListEncoder().encode([first]).write(to: url)
+        let legacy = try PropertyListEncoder().encode([first])
+        try legacy.write(to: url)
         var history = try History.load(from: url)
         #expect(history.clips == [first])
         #expect(history.boards.first?.name == "实用链接")
@@ -23,10 +24,11 @@ struct PinboardTests {
         history.addToBoard(clipID: first.id, boardID: board)
         try history.insert(clip("pinned"))
         #expect(history.boards.last?.clipIDs == [first.id])
-        for index in 0..<History.maximumItems { try history.insert(clip("new \(index)")) }
+        for index in 0..<300 { try history.insert(clip("new \(index)")) }
         #expect(history.clips.contains(where: { $0.id == first.id }))
         try history.editBoard(id: board, name: "资料", color: 4)
         try history.save(to: url)
+        #expect(try Data(contentsOf: url.appendingPathExtension("legacy-backup")) == legacy)
         let restored = try History.load(from: url)
         #expect(restored.boards == history.boards)
         #expect(restored.clips == history.clips)
@@ -57,8 +59,9 @@ struct PinboardTests {
         let board = NSPasteboard(name: .init(UUID().uuidString))
         defer { board.releaseGlobally() }
         let model = ClipboardModel(pasteboard: board, storageURL: url, preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         board.setString("searchable", forType: .string)
-        model.capture(expectedChange: board.changeCount)
+        await model.capture(expectedChange: board.changeCount)
         let item = try #require(model.history.clips.first)
         model.beginBoardEdit(); model.boardNameDraft = "工作"; model.finishBoardEdit()
         let group = try #require(model.history.boards.last)
@@ -69,18 +72,20 @@ struct PinboardTests {
         model.query = "search"; await model.waitForSearch(); #expect(model.visible.count == 1)
         model.removeFromCurrentBoard(item); await model.waitForSearch(); #expect(model.visible.isEmpty)
         model.selectBoard(nil); #expect(model.visible.count == 1)
+        #expect(model.flushStorage())
         #expect(try History.load(from: url).boards == model.history.boards)
     }
-    @Test @MainActor func batchDropKeepsHistoryAndDeduplicatesMembership() throws {
+    @Test @MainActor func batchDropKeepsHistoryAndDeduplicatesMembership() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("history.plist")
         let pasteboard = NSPasteboard(name: .init(UUID().uuidString))
         defer { pasteboard.releaseGlobally() }
         let model = ClipboardModel(pasteboard: pasteboard, storageURL: url, preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         for text in ["first", "second"] {
             pasteboard.clearContents(); pasteboard.setString(text, forType: .string)
-            model.capture(expectedChange: pasteboard.changeCount)
+            await model.capture(expectedChange: pasteboard.changeCount)
         }
         let original = model.history.clips
         let board = try #require(model.history.boards.first)
@@ -93,6 +98,7 @@ struct PinboardTests {
         #expect(model.drop([payload], on: board))
         #expect(model.history.clips == original)
         #expect(model.history.boards.first?.clipIDs == original.map(\.id))
+        #expect(model.flushStorage())
         #expect(try History.load(from: url).boards == model.history.boards)
         #expect(!model.drop(["clips:invalid"], on: board))
         let otherID = try model.history.addBoard(name: "Other", color: 1)
@@ -104,6 +110,7 @@ struct PinboardTests {
         #expect(model.visible.isEmpty)
         #expect(model.history.clips == original)
         #expect(model.history.boards.first { $0.id == otherID }?.clipIDs == original.map(\.id))
+        #expect(model.flushStorage())
         #expect(try History.load(from: url).boards == model.history.boards)
         model.undoDeletion()
         #expect(model.history.boards.first { $0.id == board.id }?.clipIDs == original.map(\.id))
@@ -140,16 +147,17 @@ struct PinboardTests {
                           items: [[Representation(type: "public.rtf", data: Data([0]))]], identity: Data())
         #expect(String(formattedClipText(broken).characters) == "fallback")
     }
-    @Test @MainActor func dropToCreateWaitsForNameAndCancellationDoesNotChangeHistory() throws {
+    @Test @MainActor func dropToCreateWaitsForNameAndCancellationDoesNotChangeHistory() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("history.plist")
         let pasteboard = NSPasteboard(name: .init(UUID().uuidString))
         defer { pasteboard.releaseGlobally() }
         let model = ClipboardModel(pasteboard: pasteboard, storageURL: url, preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         for text in ["first", "second"] {
             pasteboard.clearContents(); pasteboard.setString(text, forType: .string)
-            model.capture(expectedChange: pasteboard.changeCount)
+            await model.capture(expectedChange: pasteboard.changeCount)
         }
         let clips = model.history.clips
         let boards = model.history.boards
@@ -170,18 +178,20 @@ struct PinboardTests {
         #expect(model.history.boards.last?.clipIDs == clips.map(\.id))
         #expect(model.history.clips == clips)
         #expect(!model.namingDroppedBoard && !model.creatingBoard)
+        #expect(model.flushStorage())
         #expect(try History.load(from: url).boards == model.history.boards)
     }
-    @Test @MainActor func deletionUndoRestoresCardsAndMembershipWithoutLosingNewCapture() throws {
+    @Test @MainActor func deletionUndoRestoresCardsAndMembershipWithoutLosingNewCapture() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("history.plist")
         let pasteboard = NSPasteboard(name: .init(UUID().uuidString))
         defer { pasteboard.releaseGlobally() }
         let model = ClipboardModel(pasteboard: pasteboard, storageURL: url, preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         for text in ["first", "second"] {
             pasteboard.clearContents(); pasteboard.setString(text, forType: .string)
-            model.capture(expectedChange: pasteboard.changeCount)
+            await model.capture(expectedChange: pasteboard.changeCount)
         }
         let original = model.history.clips
         let board = try #require(model.history.boards.first)
@@ -191,17 +201,18 @@ struct PinboardTests {
         #expect(model.history.clips.isEmpty)
         #expect(model.history.boards.first?.clipIDs.isEmpty == true)
         pasteboard.clearContents(); pasteboard.setString("new capture", forType: .string)
-        model.capture(expectedChange: pasteboard.changeCount)
+        await model.capture(expectedChange: pasteboard.changeCount)
         model.undoDeletion()
         #expect(Set(model.history.clips.map(\.id)).isSuperset(of: original.map(\.id)))
         #expect(model.history.clips.contains { $0.text == "new capture" })
         #expect(model.history.boards.first?.clipIDs == original.map(\.id))
+        #expect(model.flushStorage())
         #expect(try History.load(from: url).clips == model.history.clips)
         model.remove(original[0]); model.remove(original[1])
         model.undoDeletion(); model.undoDeletion()
         #expect(model.history.clips.count == 3)
     }
-    @Test func undoMergesRecopiedContentAndRefusesCapacityOverflow() throws {
+    @Test func undoMergesRecopiedContentWithoutCapacityLimit() throws {
         let item = clip("again")
         var history = History(clips: [item])
         let board = try #require(history.boards.first)
@@ -213,10 +224,11 @@ struct PinboardTests {
         #expect(history.clips == [refreshed])
         #expect(history.boards.first?.clipIDs == [refreshed.id])
         history.remove(id: refreshed.id)
-        for index in 0..<History.maximumItems { try history.insert(clip("item \(index)")) }
+        for index in 0..<300 { try history.insert(clip("item \(index)")) }
         let full = history.clips
-        #expect(throws: HistoryError.self) { try history.restore(deletion) }
-        #expect(history.clips == full)
+        try history.restore(deletion)
+        #expect(history.clips.count == full.count + 1)
+        #expect(full.allSatisfy { history.clips.contains($0) })
     }
     @Test func panelGeometryStaysOnTargetScreenAndUsesShortReveal() {
         let secondary = NSRect(x: -1920, y: -500, width: 1920, height: 1080)
@@ -227,17 +239,17 @@ struct PinboardTests {
         let small = ShelfGeometry.shown(in: NSRect(x: 0, y: 0, width: 20, height: 20))
         #expect(small.width == 0 && small.height == 0)
     }
-    @Test func fullPinboardsRejectNewCaptureWithoutDiscardingPinnedItems() throws {
+    @Test func largePinboardsAllowNewCaptureWithoutDiscardingPinnedItems() throws {
         var history = History()
         let board = try #require(history.boards.first?.id)
-        for index in 0..<History.maximumItems {
+        for index in 0..<300 {
             let item = clip("pinned \(index)"); try history.insert(item)
             history.addToBoard(clipID: item.id, boardID: board)
         }
         let original = history.clips
-        #expect(throws: HistoryError.self) { try history.insert(clip("new")) }
-        #expect(history.clips == original)
-        #expect(history.boards.first?.clipIDs.count == History.maximumItems)
+        try history.insert(clip("new"))
+        #expect(Array(history.clips.dropFirst()) == original)
+        #expect(history.boards.first?.clipIDs.count == 300)
     }
     @Test @MainActor func themeAccentIsReadableInBothAppearances() {
         func luminance(_ color: Color) -> Double {

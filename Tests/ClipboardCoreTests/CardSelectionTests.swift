@@ -50,15 +50,16 @@ struct CardSelectionTests {
         selection.select(UUID(), in: ids)
         #expect(selection.ids.isEmpty)
     }
-    @Test @MainActor func multipleSelectionCopiesInDisplayOrderAndCanBeGroupedTogether() throws {
+    @Test @MainActor func multipleSelectionCopiesInDisplayOrderAndCanBeGroupedTogether() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let board = NSPasteboard(name: .init(UUID().uuidString))
         defer { board.releaseGlobally() }
         let model = ClipboardModel(pasteboard: board, storageURL: directory.appendingPathComponent("history.plist"), preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         for text in ["first", "second", "third"] {
             board.clearContents(); board.setString(text, forType: .string)
-            model.capture(expectedChange: board.changeCount)
+            await model.capture(expectedChange: board.changeCount)
         }
         model.resetSelection(); model.selection.selectAll(in: model.visible.map(\.id))
         #expect(model.copy(model.selectedClips))

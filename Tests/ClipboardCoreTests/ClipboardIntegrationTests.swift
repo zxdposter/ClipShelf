@@ -6,15 +6,42 @@ import ClipboardCore
 
 struct ClipboardIntegrationTests {
     @Test @MainActor
-    func copyingPromotesCardsAndPersistsTheirOrder() throws {
+    func failedBackgroundSaveBlocksQuitAndRetriesWithoutLosingCards() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let blocked = directory.appendingPathComponent("blocked")
+        try Data([0]).write(to: blocked)
+        let board = NSPasteboard(name: .init("ClipShelf-storage-failure-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        let url = blocked.appendingPathComponent("history.plist")
+        let model = ClipboardModel(pasteboard: board, storageURL: url, preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
+        board.setString("retained in memory", forType: .string)
+        await model.capture(expectedChange: board.changeCount, source: nil)
+        #expect(!(await model.finishPendingStorage()))
+        #expect(model.storageFailed && model.message != nil)
+        #expect(model.history.clips.count == 1)
+        try FileManager.default.removeItem(at: blocked)
+        board.clearContents(); board.setString("retry", forType: .string)
+        await model.capture(expectedChange: board.changeCount, source: nil)
+        #expect(await model.finishPendingStorage())
+        #expect(!model.storageFailed)
+        #expect(model.history.clips.count == 2)
+        #expect(try History.load(from: url).clips == model.history.clips)
+    }
+
+    @Test @MainActor
+    func copyingPromotesCardsAndPersistsTheirOrder() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let board = NSPasteboard(name: .init("ClipShelf-promote-\(UUID().uuidString)"))
         defer { board.releaseGlobally(); try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("history.plist")
         let model = ClipboardModel(pasteboard: board, storageURL: url, preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         for text in ["第一项", "第二项", "第三项"] {
             board.clearContents(); board.setString(text, forType: .string)
-            model.capture(expectedChange: board.changeCount, source: nil)
+            await model.capture(expectedChange: board.changeCount, source: nil)
         }
         let first = try #require(model.history.clips.first(where: { $0.text == "第一项" }))
         let second = try #require(model.history.clips.first(where: { $0.text == "第二项" }))
@@ -32,19 +59,21 @@ struct ClipboardIntegrationTests {
         #expect(board.string(forType: .string) == "第二项\n第一项")
         model.poll()
         #expect(model.history.clips.count == 3)
+        #expect(model.flushStorage())
         #expect(try History.load(from: url).clips == model.history.clips)
     }
 
     @Test @MainActor
-    func stackWritesNextItemAndDoesNotRecaptureItsOwnPaste() throws {
+    func stackWritesNextItemAndDoesNotRecaptureItsOwnPaste() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let board = NSPasteboard(name: .init("ClipShelf-stack-\(UUID().uuidString)"))
         defer { board.releaseGlobally(); try? FileManager.default.removeItem(at: directory) }
         let model = ClipboardModel(pasteboard: board, storageURL: directory.appendingPathComponent("history.plist"), preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         model.startStack(includeSelection: false)
         for text in ["第一项", "第二项"] {
             board.clearContents(); board.setString(text, forType: .string)
-            model.capture(expectedChange: board.changeCount, source: nil)
+            await model.capture(expectedChange: board.changeCount, source: nil)
         }
         #expect(model.stackClips.map(\.text) == ["第一项", "第二项"])
         #expect(model.prepareStackPaste())
@@ -56,6 +85,11 @@ struct ClipboardIntegrationTests {
         #expect(!model.prepareStackPaste())
         #expect(board.string(forType: .string) == "第二项")
         #expect(model.history.clips.count == 2)
+        board.clearContents(); board.setString("尚未轮询的第三项", forType: .string)
+        #expect(model.prepareStackPaste())
+        #expect(board.string(forType: .string) == "尚未轮询的第三项")
+        #expect(model.stackIDs.isEmpty)
+        #expect(model.history.clips.count == 3)
     }
 
     @Test @MainActor
@@ -65,20 +99,21 @@ struct ClipboardIntegrationTests {
         defer { board.releaseGlobally(); try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("history.plist")
         let model = ClipboardModel(pasteboard: board, storageURL: url, preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         let rich = Data("{\\rtf1 hello}".utf8)
         let item = NSPasteboardItem()
         item.setString("测试剪贴板 hello", forType: .string); item.setData(rich, forType: .rtf)
         board.clearContents(); #expect(board.writeObjects([item]))
-        model.capture(expectedChange: board.changeCount, source: nil)
+        await model.capture(expectedChange: board.changeCount, source: nil)
         #expect(model.history.clips.count == 1)
         let originalID = try #require(model.history.clips.first?.id)
         let second = NSPasteboardItem(); second.setString("另一条记录", forType: .string)
         board.clearContents(); #expect(board.writeObjects([second]))
-        model.capture(expectedChange: board.changeCount, source: nil)
+        await model.capture(expectedChange: board.changeCount, source: nil)
         let duplicate = NSPasteboardItem()
         duplicate.setString("测试剪贴板 hello", forType: .string); duplicate.setData(rich, forType: .rtf)
         board.clearContents(); #expect(board.writeObjects([duplicate]))
-        model.capture(expectedChange: board.changeCount, source: nil)
+        await model.capture(expectedChange: board.changeCount, source: nil)
         #expect(model.history.clips.count == 2)
         #expect(model.history.clips.first?.id == originalID)
         model.query = "测试 hello"
@@ -90,6 +125,7 @@ struct ClipboardIntegrationTests {
         #expect(board.pasteboardItems?.first?.data(forType: .rtf) == rich)
         model.poll()
         #expect(model.history.clips.count == 2)
+        #expect(model.flushStorage())
         #expect(try History.load(from: url).clips == model.history.clips)
     }
 
@@ -99,6 +135,7 @@ struct ClipboardIntegrationTests {
         let board = NSPasteboard(name: .init("ClipShelf-test-\(UUID().uuidString)"))
         defer { board.releaseGlobally(); try? FileManager.default.removeItem(at: directory) }
         let model = ClipboardModel(pasteboard: board, storageURL: directory.appendingPathComponent("history.plist"), preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         let pixels = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 2,
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
@@ -106,19 +143,29 @@ struct ClipboardIntegrationTests {
         let png = try #require(pixels.representation(using: .png, properties: [:]))
         let image = NSPasteboardItem(); image.setData(png, forType: .png)
         board.clearContents(); #expect(board.writeObjects([image]))
-        model.capture(expectedChange: board.changeCount, source: nil)
+        await model.capture(expectedChange: board.changeCount, source: nil)
         #expect(model.history.clips.first?.kind == .image)
         let file = NSPasteboardItem(); file.setString("file:///tmp/clipshelf-example.txt", forType: .fileURL)
         board.clearContents(); #expect(board.writeObjects([file]))
-        model.capture(expectedChange: board.changeCount, source: nil)
+        await model.capture(expectedChange: board.changeCount, source: nil)
         #expect(model.history.clips.first?.kind == .files)
         #expect(model.history.clips.first?.text == "clipshelf-example.txt")
         let secret = NSPasteboardItem(); secret.setString("test secret", forType: .string)
         secret.setString("1", forType: .init("org.nspasteboard.ConcealedType"))
         board.clearContents(); #expect(board.writeObjects([secret]))
-        model.capture(expectedChange: board.changeCount, source: nil)
+        await model.capture(expectedChange: board.changeCount, source: nil)
         #expect(model.history.clips.count == 2)
         model.filter = .image
         #expect(model.visible.count == 1)
+        let largePayload = Data(repeating: 7, count: 6 * 1024 * 1024)
+        let large = NSPasteboardItem(); large.setData(largePayload, forType: .png)
+        board.clearContents(); #expect(board.writeObjects([large]))
+        await model.capture(expectedChange: board.changeCount, source: nil)
+        #expect(model.history.clips.first?.byteCount == largePayload.count)
+        let largeClip = try #require(model.history.clips.first)
+        #expect(model.copy(largeClip))
+        #expect(board.data(forType: .png) == largePayload)
+        #expect(await model.finishPendingStorage())
+        #expect(try History.load(from: directory.appendingPathComponent("history.plist")).clips == model.history.clips)
     }
 }

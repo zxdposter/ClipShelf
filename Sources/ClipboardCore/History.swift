@@ -1,17 +1,17 @@
 import Foundation
 import CryptoKit
 
-public enum ClipKind: String, Codable, CaseIterable {
+public enum ClipKind: String, Codable, CaseIterable, Sendable {
     case text, link, image, files
 }
 
-public struct Representation: Codable, Equatable {
+public struct Representation: Codable, Equatable, Sendable {
     public let type: String
     public let data: Data
     public init(type: String, data: Data) { self.type = type; self.data = data }
 }
 
-public struct Clip: Codable, Identifiable, Equatable {
+public struct Clip: Codable, Identifiable, Equatable, Sendable {
     public internal(set) var id: UUID
     public let fingerprint: String
     public let kind: ClipKind
@@ -23,12 +23,40 @@ public struct Clip: Codable, Identifiable, Equatable {
     public let items: [[Representation]]
     public var byteCount: Int { items.flatMap { $0 }.reduce(0) { $0 + $1.data.count } }
 
+    struct Metadata: Codable, Equatable {
+        let id: UUID
+        let fingerprint: String
+        let kind: ClipKind
+        let sourceName: String
+        let sourceBundle: String
+        let title: String?
+        let copiedAt: Date
+        init(_ clip: Clip) {
+            id = clip.id; fingerprint = clip.fingerprint; kind = clip.kind
+            sourceName = clip.sourceName; sourceBundle = clip.sourceBundle
+            title = clip.title; copiedAt = clip.copiedAt
+        }
+    }
+    struct Payload: Codable {
+        let text: String
+        let items: [[Representation]]
+        init(_ clip: Clip) { text = clip.text; items = clip.items }
+    }
+    init(metadata: Metadata, payload: Payload) {
+        id = metadata.id; fingerprint = metadata.fingerprint; kind = metadata.kind; text = payload.text
+        sourceName = metadata.sourceName; sourceBundle = metadata.sourceBundle
+        title = metadata.title; copiedAt = metadata.copiedAt; items = payload.items
+    }
+
     public init(kind: ClipKind, text: String, sourceName: String, sourceBundle: String,
                 items: [[Representation]], identity: Data, copiedAt: Date = Date()) {
         id = UUID()
         // Type separates equal bytes representing different kinds of content.
-        fingerprint = SHA256.hash(data: Data(kind.rawValue.utf8) + Data([0]) + identity)
-            .map { String(format: "%02x", $0) }.joined()
+        var hasher = SHA256()
+        hasher.update(data: Data(kind.rawValue.utf8))
+        hasher.update(data: Data([0]))
+        hasher.update(data: identity)
+        fingerprint = hasher.finalize().map { String(format: "%02x", $0) }.joined()
         self.kind = kind; self.text = text; self.sourceName = sourceName
         self.sourceBundle = sourceBundle; self.items = items; self.copiedAt = copiedAt
     }
@@ -40,7 +68,7 @@ public struct Clip: Codable, Identifiable, Equatable {
     }
 }
 
-public struct Pinboard: Codable, Identifiable, Equatable {
+public struct Pinboard: Codable, Identifiable, Equatable, Sendable {
     public let id: UUID
     public var name: String
     public var color: Int
@@ -51,21 +79,16 @@ public struct Pinboard: Codable, Identifiable, Equatable {
 }
 
 public enum HistoryError: LocalizedError {
-    case oversized, invalidArchive, invalidBoard, capacity
+    case invalidArchive, invalidBoard
     public var errorDescription: String? {
         switch self {
-        case .capacity: return "分组已占满历史容量，请先移除部分卡片再继续采集。"
         case .invalidBoard: return "分组名称需为 1–80 个字符，最多保存 100 个分组。"
-        case .oversized: return "内容超过 5 MB，未保存。"
         case .invalidArchive: return "历史文件无法读取。原文件已保留；请先处理该文件再重新启动。"
         }
     }
 }
 
-public struct History {
-    public static let maximumItems = 200
-    public static let maximumItemBytes = 5 * 1024 * 1024
-    public static let maximumHistoryBytes = 50 * 1024 * 1024
+public struct History: Sendable {
     public private(set) var clips: [Clip]
     public private(set) var boards: [Pinboard]
     private struct Archive: Codable {
@@ -113,7 +136,6 @@ public struct History {
     }
 
     public mutating func insert(_ clip: Clip) throws {
-        guard clip.byteCount <= Self.maximumItemBytes else { throw HistoryError.oversized }
         if let index = clips.firstIndex(where: { $0.fingerprint == clip.fingerprint }) {
             // Reuse the existing identity while refreshing content and its source.
             let old = clips.remove(at: index)
@@ -122,8 +144,6 @@ public struct History {
             refreshed.title = old.title
             clips.insert(refreshed, at: 0)
         } else { clips.insert(clip, at: 0) }
-        try trim(to: Self.maximumItems)
-        if !clips.contains(where: { $0.fingerprint == clip.fingerprint }) { throw HistoryError.capacity }
     }
 
     public struct Deletion {
@@ -146,8 +166,6 @@ public struct History {
                 restored[entry.clip.id] = entry.clip.id
             }
         }
-        guard next.clips.count <= Self.maximumItems,
-              next.clips.reduce(0, { $0 + $1.byteCount }) <= Self.maximumHistoryBytes else { throw HistoryError.capacity }
         for previous in deletion.boards {
             guard let boardIndex = next.boards.firstIndex(where: { $0.id == previous.id }) else { continue }
             for (index, id) in previous.clipIDs.enumerated() {
@@ -167,7 +185,6 @@ public struct History {
     }
     public mutating func editText(id: UUID, text: String) throws {
         guard let index = clips.firstIndex(where: { $0.id == id }), [.text, .link].contains(clips[index].kind) else { return }
-        guard text.utf8.count <= Self.maximumItemBytes else { throw HistoryError.oversized }
         let old = clips[index]
         let edited = Clip(kind: old.kind, text: text, sourceName: old.sourceName, sourceBundle: old.sourceBundle,
                           items: [[Representation(type: "public.utf8-plain-text", data: Data(text.utf8))]],
@@ -182,7 +199,6 @@ public struct History {
     }
     private mutating func replace(id: UUID, with replacement: Clip) throws {
         guard let old = clips.first(where: { $0.id == id }) else { return }
-        guard replacement.byteCount <= Self.maximumItemBytes else { throw HistoryError.oversized }
         var edited = replacement
         edited.id = id; edited.title = old.title
         // Merge duplicate content into the edited card, preserving every board membership.
@@ -195,18 +211,6 @@ public struct History {
             clips.removeAll { $0.id == duplicate.id }
         }
         if let current = clips.firstIndex(where: { $0.id == id }) { clips[current] = edited }
-        try trim(to: Self.maximumItems)
-    }
-
-    public mutating func trim(to limit: Int) throws {
-        guard (1...Self.maximumItems).contains(limit) else { throw HistoryError.invalidArchive }
-        let pinned = Set(boards.flatMap(\.clipIDs))
-        guard pinned.count <= limit else { throw HistoryError.capacity }
-        var size = clips.reduce(0) { $0 + $1.byteCount }
-        while clips.count > limit || size > Self.maximumHistoryBytes {
-            guard let index = clips.lastIndex(where: { !pinned.contains($0.id) }) else { throw HistoryError.capacity }
-            size -= clips.remove(at: index).byteCount
-        }
     }
     public mutating func prune(before cutoff: Date) {
         let pinned = Set(boards.flatMap(\.clipIDs))
@@ -224,8 +228,7 @@ public struct History {
 
     public static func load(from url: URL) throws -> History {
         guard FileManager.default.fileExists(atPath: url.path) else { return History() }
-        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size <= maximumHistoryBytes * 2 + 1_048_576 else { throw HistoryError.invalidArchive }
+        if try HistoryDatabase.isDatabase(at: url) { return try HistoryDatabase.read(from: url) }
         let clips: [Clip]
         let boards: [Pinboard]
         do {
@@ -240,26 +243,29 @@ public struct History {
                 boards = [Pinboard(name: "实用链接")]
             }
         }
-        catch { throw HistoryError.invalidArchive }
-        guard clips.count <= maximumItems,
-              clips.allSatisfy({ $0.byteCount <= maximumItemBytes && ($0.title?.count ?? 0) <= 200 }),
-              clips.reduce(0, { $0 + $1.byteCount }) <= maximumHistoryBytes,
+        catch {
+            // A concurrent reader can cross the atomic legacy-to-database replacement.
+            if (try? HistoryDatabase.isDatabase(at: url)) == true { return try HistoryDatabase.read(from: url) }
+            throw HistoryError.invalidArchive
+        }
+        return try validated(clips: clips, boards: boards)
+    }
+
+    static func validated(clips: [Clip], boards: [Pinboard]) throws -> History {
+        guard clips.allSatisfy({ ($0.title?.count ?? 0) <= 200 }),
               Set(clips.map(\.id)).count == clips.count,
               Set(clips.map(\.fingerprint)).count == clips.count
         else { throw HistoryError.invalidArchive }
         let ids = Set(clips.map(\.id))
         guard boards.count <= 100, Set(boards.map(\.id)).count == boards.count,
               boards.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.name.count <= 80 &&
-                  (0..<6).contains($0.color) && $0.clipIDs.count <= maximumItems &&
+                  (0..<6).contains($0.color) &&
                   Set($0.clipIDs).count == $0.clipIDs.count && Set($0.clipIDs).isSubset(of: ids) })
         else { throw HistoryError.invalidArchive }
         return History(clips: clips, boards: boards)
     }
 
     public func save(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
-        try encoder.encode(Archive(version: 1, clips: clips, boards: boards)).write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try HistoryDatabase(url: url).save(self)
     }
 }

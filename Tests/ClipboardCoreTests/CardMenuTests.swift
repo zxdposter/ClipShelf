@@ -75,6 +75,7 @@ struct CardMenuTests {
         let board = NSPasteboard(name: .init(UUID().uuidString))
         defer { board.releaseGlobally() }
         let model = ClipboardModel(pasteboard: board, storageURL: directory.appendingPathComponent("history.plist"), preferences: isolatedPreferences())
+        defer { _ = model.flushStorage() }
         let first = text("first"), second = text("second")
         model.history = History(clips: [first, second]); model.resetSelection()
         #expect(model.targets(for: second).map(\.id) == [second.id])

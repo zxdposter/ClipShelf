@@ -87,7 +87,7 @@ struct OriginalSettingsTests {
         #expect(restored.binding(for: .activate) == nil)
         #expect(restored.binding(for: .previousBoard) == ShortcutAction.nextBoard.defaultBinding)
     }
-    @Test @MainActor func privacyFlagsAndPlainTextCopyAffectRealRepresentations() throws {
+    @Test @MainActor func privacyFlagsAndPlainTextCopyAffectRealRepresentations() async throws {
         let suite = "ClipShelf.tests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -96,18 +96,19 @@ struct OriginalSettingsTests {
         let board = NSPasteboard(name: .init(UUID().uuidString)); defer { board.releaseGlobally() }
         let preferences = Preferences(defaults: defaults)
         let model = ClipboardModel(pasteboard: board, storageURL: directory.appendingPathComponent("history.plist"), preferences: preferences)
+        defer { _ = model.flushStorage() }
         let concealed = NSPasteboardItem(); concealed.setString("private sample", forType: .string)
         concealed.setString("1", forType: .init("org.nspasteboard.ConcealedType"))
-        board.writeObjects([concealed]); model.capture(expectedChange: board.changeCount)
+        board.writeObjects([concealed]); await model.capture(expectedChange: board.changeCount)
         #expect(model.history.clips.isEmpty)
         preferences.ignoreConfidential = false
-        model.capture(expectedChange: board.changeCount)
+        await model.capture(expectedChange: board.changeCount)
         #expect(model.history.clips.count == 1)
         let credential = NSPasteboardItem()
         credential.setString("test credential", forType: .string)
         credential.setString("1", forType: .init("local.clipshelf.credential"))
         board.clearContents(); board.writeObjects([credential])
-        model.capture(expectedChange: board.changeCount)
+        await model.capture(expectedChange: board.changeCount)
         #expect(model.history.clips.count == 1)
         let item = clip("plain")
         #expect(model.copy([item], plainText: true))

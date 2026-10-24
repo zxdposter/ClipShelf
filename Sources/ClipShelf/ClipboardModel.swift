@@ -371,6 +371,9 @@ final class ClipboardModel: ObservableObject {
     let preferences: Preferences
     let demo: Bool
     let storageURL: URL
+    private let historyWriter: HistoryWriter
+    private var storageRevision = 0
+    private var captureTask: Task<Void, Never>?
     private var timer: Timer?
     private var lastChange = 0
     private var pendingAt: Date?
@@ -428,14 +431,14 @@ final class ClipboardModel: ObservableObject {
         var seen = Set<UUID>()
         let ids = strings.flatMap { value -> [UUID] in
             if value.hasPrefix("clips:") {
-                return value.dropFirst(6).split(separator: ",").prefix(History.maximumItems).compactMap { UUID(uuidString: String($0)) }
+                return value.dropFirst(6).split(separator: ",").compactMap { UUID(uuidString: String($0)) }
             }
             if value.hasPrefix("clip:"), let id = UUID(uuidString: String(value.dropFirst(5))) { return [id] }
             return []
         }.filter { known.contains($0) && seen.insert($0).inserted }
         guard !ids.isEmpty else { return false }
         beginBoardEdit()
-        pendingBoardClipIDs = Array(ids.prefix(History.maximumItems))
+        pendingBoardClipIDs = ids
         boardNameDraft = ""
         namingDroppedBoard = true
         return true
@@ -474,7 +477,7 @@ final class ClipboardModel: ObservableObject {
         commit { history in
             for string in strings {
                 if string.hasPrefix("clips:") {
-                    let ids = string.dropFirst(6).split(separator: ",").prefix(History.maximumItems).compactMap { UUID(uuidString: String($0)) }
+                    let ids = string.dropFirst(6).split(separator: ",").compactMap { UUID(uuidString: String($0)) }
                     for id in ids.reversed() where history.clips.contains(where: { $0.id == id }) {
                         history.addToBoard(clipID: id, boardID: board.id); changed = true
                     }
@@ -495,6 +498,7 @@ final class ClipboardModel: ObservableObject {
         self.pasteboard = pasteboard
         self.storageURL = storageURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ClipShelf/history.plist")
+        historyWriter = HistoryWriter(url: self.storageURL)
         if demo { seedDemo(); refreshSourceApps(); scheduleSearch(indexChanged: true); return }
         do { history = try History.load(from: self.storageURL) }
         catch { locked = true; storageFailed = true; message = error.localizedDescription }
@@ -516,34 +520,46 @@ final class ClipboardModel: ObservableObject {
         if change != lastChange { lastChange = change; pendingAt = Date(); return }
         guard let pendingAt, Date().timeIntervalSince(pendingAt) >= 0.3 else { return }
         self.pendingAt = nil
-        capture(expectedChange: change)
+        let previous = captureTask
+        captureTask = Task { [weak self] in
+            await previous?.value
+            await self?.capture(expectedChange: change)
+        }
     }
 
-    func capture(expectedChange: Int, source: NSRunningApplication? = NSWorkspace.shared.frontmostApplication) {
+    private struct CapturedContent: Sendable {
+        let kind: ClipKind
+        let text: String
+        let sourceName: String
+        let bundle: String
+        let items: [[Representation]]
+        let identity: Data
+        let copiedAt: Date
+        func clip() -> Clip {
+            Clip(kind: kind, text: text, sourceName: sourceName, sourceBundle: bundle,
+                 items: items, identity: identity, copiedAt: copiedAt)
+        }
+    }
+    private func capturedContent(expectedChange: Int, source: NSRunningApplication?) -> CapturedContent? {
         let bundle = source?.bundleIdentifier ?? ""
-        guard !preferences.excludes(bundle), let rawItems = pasteboard.pasteboardItems, !rawItems.isEmpty else { return }
-        guard !rawItems.contains(where: { $0.types.contains(.init("local.clipshelf.credential")) }) else { return }
+        guard !preferences.excludes(bundle), let rawItems = pasteboard.pasteboardItems, !rawItems.isEmpty else { return nil }
+        guard !rawItems.contains(where: { $0.types.contains(.init("local.clipshelf.credential")) }) else { return nil }
         let allowed: Set<String> = [NSPasteboard.PasteboardType.string.rawValue, "public.utf16-plain-text",
             "public.text", "public.url", "public.file-url", "public.png", "public.tiff", "public.rtf", "public.html"]
-        var total = 0
         var items: [[Representation]] = []
         for item in rawItems {
             guard !item.types.contains(where: {
                 let confidential = $0.rawValue == "org.nspasteboard.ConcealedType"
                 return (confidential && preferences.ignoreConfidential) || (!confidential && preferences.ignoreTransient && ignoredTypes.contains($0.rawValue))
-            }) else { return }
+            }) else { return nil }
             var representations: [Representation] = []
             for type in item.types where allowed.contains(type.rawValue) {
                 guard let data = item.data(forType: type) else { continue }
-                guard data.count <= History.maximumItemBytes - total else {
-                    message = "内容超过 5 MB，已跳过这次复制。"; return
-                }
-                total += data.count
                 representations.append(Representation(type: type.rawValue, data: data))
             }
             if !representations.isEmpty { items.append(representations) }
         }
-        guard !items.isEmpty, pasteboard.changeCount == expectedChange else { return }
+        guard !items.isEmpty, pasteboard.changeCount == expectedChange else { return nil }
         let flat = items.flatMap { $0 }
         let files = flat.filter { $0.type == "public.file-url" }.compactMap { String(data: $0.data, encoding: .utf8) }
         let kind: ClipKind
@@ -562,15 +578,19 @@ final class ClipboardModel: ObservableObject {
             text = string; identity = Data(string.utf8)
         } else if let url = flat.first(where: { $0.type == "public.url" }), let value = String(data: url.data, encoding: .utf8) {
             kind = .link; text = value; identity = url.data
-        } else { return }
-        guard preferences.captures(kind), pasteboard.changeCount == expectedChange else { return }
-        let clip = Clip(kind: kind, text: text, sourceName: source?.localizedName ?? "未知应用",
-                        sourceBundle: bundle, items: items, identity: identity)
-        commit { history in
-            try history.insert(clip)
-            try history.trim(to: self.preferences.historyLimit)
-            guard history.clips.contains(where: { $0.fingerprint == clip.fingerprint }) else { throw HistoryError.capacity }
-        }
+        } else { return nil }
+        guard preferences.captures(kind), pasteboard.changeCount == expectedChange else { return nil }
+        return CapturedContent(kind: kind, text: text, sourceName: source?.localizedName ?? "未知应用",
+                               bundle: bundle, items: items, identity: identity, copiedAt: Date())
+    }
+    func capture(expectedChange: Int, source: NSRunningApplication? = NSWorkspace.shared.frontmostApplication) async {
+        guard let content = capturedContent(expectedChange: expectedChange, source: source) else { return }
+        let clip = await Task.detached(priority: .utility) { content.clip() }.value
+        guard !locked, pasteboard.changeCount == expectedChange else { return }
+        commitCaptured(clip)
+    }
+    private func commitCaptured(_ clip: Clip) {
+        commit { history in try history.insert(clip) }
         if stackMode, !storageFailed, let id = history.clips.first(where: { $0.fingerprint == clip.fingerprint })?.id, !stackIDs.contains(id) { stackIDs.append(id) }
     }
 
@@ -579,11 +599,46 @@ final class ClipboardModel: ObservableObject {
         do {
             var next = history
             try change(&next)
-            if !demo { try next.save(to: storageURL) }
             history = next
+            if !demo {
+                storageRevision += 1
+                let revision = storageRevision
+                historyWriter.save(next) { [weak self] result in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.storageRevision == revision else { return }
+                        self.applyStorageResult(result)
+                    }
+                }
+            }
+        } catch { storageFailed = true; message = "未能保存历史：\(error.localizedDescription)" }
+    }
+
+    private func applyStorageResult(_ result: Result<Void, Error>) {
+        switch result {
+        case .success:
             if storageFailed { message = nil }
             storageFailed = false
-        } catch { storageFailed = true; message = "未能保存历史：\(error.localizedDescription)" }
+        case .failure(let error):
+            storageFailed = true; message = "未能保存历史：\(error.localizedDescription)"
+        }
+    }
+    @discardableResult func flushStorage() -> Bool {
+        applyStorageResult(Result { try historyWriter.flush() })
+        return !storageFailed
+    }
+    func finishPendingStorage() async -> Bool {
+        timer?.fireDate = .distantFuture
+        defer { timer?.fireDate = Date().addingTimeInterval(0.25) }
+        await captureTask?.value
+        while true {
+            let revision = storageRevision
+            let result: Result<Void, Error> = await withCheckedContinuation { continuation in
+                historyWriter.finish { continuation.resume(returning: $0) }
+            }
+            guard revision == storageRevision else { continue }
+            applyStorageResult(result)
+            return !storageFailed
+        }
     }
 
     @discardableResult func copy(_ clip: Clip) -> Bool { copy([clip]) }
@@ -635,7 +690,7 @@ final class ClipboardModel: ObservableObject {
         }
         guard !storageFailed else { return }
         deletions.append(deletion)
-        while deletions.count > 20 || deletions.reduce(0, { $0 + $1.byteCount }) > History.maximumHistoryBytes { deletions.removeFirst() }
+        while deletions.count > 20 { deletions.removeFirst() }
         resetSelection()
     }
     func undoDeletion() {
@@ -677,17 +732,15 @@ final class ClipboardModel: ObservableObject {
     @discardableResult func prepareStackPaste() -> Bool {
         guard stackMode else { return false }
         if !demo, pasteboard.changeCount != lastChange || pendingAt != nil {
-            capture(expectedChange: pasteboard.changeCount)
+            // shortcut: an immediate queue paste must capture before overwriting the pasteboard; only this race path hashes synchronously.
+            if let content = capturedContent(expectedChange: pasteboard.changeCount, source: NSWorkspace.shared.frontmostApplication) {
+                commitCaptured(content.clip())
+            }
         }
         guard let clip = stackClips.first,
               copy([clip], plainText: preferences.alwaysPlainText) else { return false }
         stackIDs.removeAll { $0 == clip.id }
         return true
-    }
-    func setHistoryLimit(_ limit: Int) {
-        guard [50, 100, 200].contains(limit) else { return }
-        commit { try $0.trim(to: limit) }
-        if !storageFailed { preferences.historyLimit = limit; resetSelection() }
     }
     func clearUnpinned() { commit { $0.removeUnpinned() }; resetSelection() }
     func count(_ kind: ClipKind?) -> Int { history.clips.filter { kind == nil || $0.kind == kind }.count }
