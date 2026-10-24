@@ -5,6 +5,24 @@ import SwiftUI
 @testable import ClipboardCore
 
 struct QuickPasteHintTests {
+    @Test @MainActor func hyperModifierDoesNotShowHintsOrEnableNumberShortcuts() {
+        let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
+        model.updateQuickPasteVisibleRange(model.visible.indices)
+        model.updateQuickPasteModifier(.command)
+        #expect(model.commandHeld && model.quickPasteHeld)
+        model.updateQuickPasteModifier([.command, .option, .shift, .control])
+        #expect(!model.commandHeld && !model.quickPasteHeld)
+        #expect(model.quickPasteNumber(at: 0) == nil)
+        model.updateQuickPasteModifier([.command, .shift])
+        #expect(model.commandHeld && model.quickPasteHeld)
+        model.updateQuickPasteModifier([.command, .capsLock, .function])
+        #expect(model.commandHeld && model.quickPasteHeld)
+        model.preferences.quickPasteModifier = .option
+        model.updateQuickPasteModifier([.command, .option, .shift, .control, .capsLock])
+        #expect(!model.commandHeld && !model.quickPasteHeld)
+        model.updateQuickPasteModifier(.option)
+        #expect(!model.commandHeld && model.quickPasteHeld)
+    }
     @Test @MainActor func keyboardScrollReachesNativeViewport() async throws {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         model.history = History(clips: (0..<200).map { index in

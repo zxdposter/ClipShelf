@@ -226,9 +226,10 @@ final class ClipboardModel: ObservableObject {
     }
     @Published private(set) var commandHeld = false
     func updateQuickPasteModifier(_ flags: NSEvent.ModifierFlags) {
-        let command = flags.contains(.command)
+        let hyper = flags.contains([.command, .option, .shift, .control])
+        let command = flags.contains(.command) && !hyper
         if commandHeld != command { commandHeld = command }
-        let held = flags.contains(preferences.quickPasteModifier.flag)
+        let held = flags.contains(preferences.quickPasteModifier.flag) && !hyper
         if quickPasteHeld != held { quickPasteHeld = held }
     }
     func quickPasteNumber(at index: Int) -> Int? {

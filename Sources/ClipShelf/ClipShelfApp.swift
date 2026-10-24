@@ -116,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 return nil
             }
             let digits: [UInt16: Int] = [18: 0, 19: 1, 20: 2, 21: 3, 23: 4, 22: 5, 26: 6, 28: 7, 25: 8]
-            if event.modifierFlags.contains(self.model.preferences.quickPasteModifier.flag), let index = digits[event.keyCode], let clip = self.model.quickPasteClip(number: index + 1) {
+            if self.model.quickPasteHeld, let index = digits[event.keyCode], let clip = self.model.quickPasteClip(number: index + 1) {
                 self.paste([clip]); return nil
             }
             let isSearchEditor = editor != nil && self.model.searchField?.currentEditor() === editor
