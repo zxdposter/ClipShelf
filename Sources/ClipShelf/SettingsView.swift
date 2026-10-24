@@ -4,14 +4,14 @@ import ServiceManagement
 import UniformTypeIdentifiers
 import ApplicationServices
 
-private enum SettingsPage: String, CaseIterable, Identifiable {
+enum SettingsPage: String, CaseIterable, Identifiable {
     case general = "通用", intelligence = "智能", privacy = "隐私", shortcuts = "键盘快捷键"
     var id: Self { self }
     var symbol: String { switch self { case .general: "gearshape"; case .intelligence: "sparkles"; case .privacy: "hand.raised"; case .shortcuts: "keyboard" } }
 }
 
 @MainActor
-private final class SettingsState: ObservableObject {
+final class SettingsState: ObservableObject {
     @Published var page = SettingsPage.general
     @Published var loginEnabled = SMAppService.mainApp.status == .enabled || SMAppService.mainApp.status == .requiresApproval
     @Published var loginBusy = false
@@ -40,7 +40,7 @@ struct SettingsView: View {
     let changeShortcut: (ShortcutAction, KeyBinding?) -> Void
     let recordingChanged: (Bool) -> Void
     let enableCapture: () -> Void
-    @StateObject private var state = SettingsState()
+    @StateObject var state = SettingsState()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var excluded: [String] { Array(NSOrderedSet(array: preferences.excludedApps.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })) as? [String] ?? [] }
 

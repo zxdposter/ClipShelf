@@ -37,17 +37,41 @@ Copy text, links, images, or files, then bring up ClipShelf to find them again. 
 - **Clipboard history** — keep recent copies together instead of losing the previous one.
 - **No duplicate clutter** — copying the same content brings its existing card back to the front.
 - **Search and filter** — find content, saved titles, or app names; search Chinese with full pinyin or initials (for example, `zhongwen` or `zw` for 中文), and narrow results by content type.
-- **Search text in images** — on-device Apple OCR recognizes Chinese and English in the background, including existing image history. Search recognized text in Chinese, full pinyin, or initials, with matching words highlighted in image cards. Results are cached; recognition yields while typing, composing Chinese, or navigating cards.
+- **Search text in images** — on-device Apple OCR recognizes Chinese and English in the background, including existing image history. Search recognized text in Chinese, full pinyin, or initials, with matching words highlighted in image cards and enlarged previews. Single image files are recognized as images, including previously misclassified history. Results are cached; recognition yields while typing, composing Chinese, or navigating cards.
 - **Filter by source app** — choose one or more apps from the filter menu or inline suggestions. Removable app tokens combine with keywords and content types; when they overflow, a count badge shows the full list on hover and individual removal on click. Use ↑↓ and Return to choose a suggestion; otherwise Return focuses results, a second Return pastes, and Tab / Shift-Tab selects the next / previous card.
 - **Keep the formatting** — see formatted text, images, and file thumbnails right on the cards.
 - **Preview with Space** — take a closer look at text, images, or files before pasting.
 - **Recognize the source** — app icons and colored card footers show where each item came from.
+
+### Chinese, full pinyin, or initials
+
+Find Chinese content without switching input methods: `zhongwen` and `zw` both match 中文. The same matching works for recognized image text.
+
+![Searching Chinese clipboard content with full pinyin](docs/images/search-pinyin-en.jpg)
+
+![Searching Chinese clipboard content with pinyin initials](docs/images/search-initials-en.jpg)
+
+### Find words inside images
+
+OCR runs locally in the background for new and existing images. Search results highlight the matching words directly on the image; press **Space** to inspect the same highlights in a larger preview.
+
+![On-device OCR search highlighting Chinese words in an image card](docs/images/image-search-en.jpg)
+
+![Enlarged image preview with the matching OCR text highlighted](docs/images/image-preview-en.jpg)
+
+### Combine source apps and search
+
+Select multiple source apps, then add keywords or a content-type filter. App tokens collapse into a compact count when they would take too much space; hover to see the full list, or click to remove sources individually.
+
+![Multiple source apps combined into a compact filter count](docs/images/source-filters-en.jpg)
 
 ## Save your favorites in collections
 
 Create collections for ideas, travel plans, reusable replies, or anything worth keeping. Give each collection a name and color, then drag cards into it.
 
 Select several cards to organize them together. Drop cards onto **+ Collections** to create a collection as you go. Delete an unwanted card directly, and undo an accidental deletion with **⌘Z**.
+
+![Multiple selected cards saved in the Ideas collection](docs/images/collections-en.jpg)
 
 ## Paste with fewer steps
 
@@ -57,13 +81,23 @@ Select several cards to organize them together. Drop cards onto **+ Collections*
 - **Plain text:** paste without formatting when that is what you need.
 - **Multiple selections:** copy, paste, organize, or delete several cards together.
 
+Hold the configured modifier alone to reveal numbers and card times. Numbering can follow the visible cards instead of the start of the history.
+
+![Numbered visible cards and timestamps while holding Command](docs/images/quick-paste-en.jpg)
+
+![Keyboard settings including numbering from visible cards and the configurable paste modifier](docs/images/settings-shortcuts-en.jpg)
+
+Build a queue, change its order, and paste each item into your destination app. Press the sequential shortcut again to finish.
+
+![Sequential clipboard queue containing sample text and an image](docs/images/sequential-paste-en.jpg)
+
 ## Make it yours
 
 Choose **English** or **中文**, set your own shortcuts, and decide how long to keep your history. Pick whether a card pastes into your current app or simply returns to the clipboard.
 
 The interface combines a frosted-glass shelf, readable cards, and source-app colors. Open and dismiss it with a shortcut whenever you need it.
 
-![ClipShelf settings with English selected and sample preferences](docs/images/settings-en.jpg)
+![Current settings with English selected and history retention set to Forever](docs/images/settings-en.jpg)
 
 ## Dark mode
 
@@ -115,3 +149,5 @@ Direct pasting needs your permission in macOS settings. You can also copy a card
 ---
 
 *All screenshots show isolated sample content, never personal clipboard history.*
+
+Screenshot generation is reproducible and runs offscreen without activating windows or reading the system clipboard. See [the screenshot renderer](docs/screenshots/README.md).
