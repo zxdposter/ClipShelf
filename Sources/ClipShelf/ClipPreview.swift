@@ -48,9 +48,15 @@ struct ClipPreview: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading).padding(12) }
             }
             Divider()
-            Text(clipColor?.summary ?? ([.text, .link, .color].contains(clip.kind) ? previewStatistics(clip.text) : Int64(clip.byteCount).formatted(.byteCount(style: .file).locale(Locale(identifier: AppLocalization.shared.language.rawValue)))))
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            if let clipColor {
+                ColorClipCodes(color: clipColor)
+            } else if !filePreviewURLs(clip).isEmpty {
+                FileClipLocation(urls: filePreviewURLs(clip)).padding(12)
+            } else {
+                Text([.text, .link, .color].contains(clip.kind) ? previewStatistics(clip.text) : Int64(clip.byteCount).formatted(.byteCount(style: .file).locale(Locale(identifier: AppLocalization.shared.language.rawValue))))
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            }
         }.frame(width: webURL == nil ? 660 : 900, height: webURL == nil ? 450 : 620).background(ShelfDesign.paper).tint(ShelfDesign.accent)
     }
 }
@@ -104,6 +110,27 @@ func filePreviewURLs(_ clip: Clip) -> [URL] {
     clip.items.flatMap { $0 }.filter { $0.type == NSPasteboard.PasteboardType.fileURL.rawValue }
         .compactMap { String(data: $0.data, encoding: .utf8).flatMap(URL.init(string:)) }
         .filter { $0.isFileURL }
+}
+
+struct FileClipLocation: View {
+    let urls: [URL]
+    private var paths: String { urls.map(\.path).joined(separator: "\n") }
+    private var existingURLs: [URL] { urls.filter { FileManager.default.fileExists(atPath: $0.path) } }
+    var body: some View {
+        HStack(spacing: 8) {
+            ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                Text(paths).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .textSelection(.enabled).fixedSize(horizontal: true, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }.frame(height: urls.count > 1 ? 40 : 18).help(paths)
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting(existingURLs)
+            } label: {
+                Image(systemName: "folder").font(.system(size: 12))
+            }.buttonStyle(.plain).disabled(existingURLs.isEmpty)
+                .help(L("在 Finder 中显示")).accessibilityLabel(L("在 Finder 中显示"))
+        }
+    }
 }
 
 private struct FileQuickPreview: NSViewRepresentable {

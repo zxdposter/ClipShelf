@@ -423,7 +423,6 @@ private struct ClipCardFace: View, Equatable {
     private var language: AppLanguage { state.language }
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var renameFocused: Bool
-    private var appearance: SourceAppearance { SourceAppearance.forApp(clip.sourceBundle, fallback: clip.kind.symbol) }
     private var clipColor: ClipColor? { clip.kind == .color ? hexColorValue(clip.text).map { ClipColor(value: $0) } : nil }
     private func relativeTime(_ now: Date) -> String {
         if now.timeIntervalSince(clip.copiedAt) < 60 { return L("刚刚") }
@@ -442,19 +441,11 @@ private struct ClipCardFace: View, Equatable {
                 ClipCardContent(clip: clip, linkPreviews: state.linkPreviews, refreshID: state.refreshID, imageHighlights: state.imageHighlights)
                     .equatable().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 ClipCardFooter(clip: clip, quickPasteNumber: quickPasteNumber, language: language).equatable()
-                    .environment(\.colorScheme, clipColor.map { $0.usesLightText ? .dark : .light } ?? colorScheme)
+                    .environment(\.colorScheme, clipColor.map { $0.usesLightDetails ? .dark : .light } ?? colorScheme)
                     .offset(y: 4)
             }.padding(14).frame(width: ShelfCardLayout.width, height: ShelfCardLayout.height)
                 .background {
                     RoundedRectangle(cornerRadius: 16).fill(clipColor?.color ?? ShelfDesign.card)
-                        .overlay {
-                            if clipColor == nil { LinearGradient(stops: [
-                                .init(color: .clear, location: 0.55),
-                                .init(color: Color(nsColor: appearance.color).opacity(0.035), location: 0.78),
-                                .init(color: Color(nsColor: appearance.color).opacity(0.13), location: 1)
-                            ], startPoint: .top, endPoint: .bottom)
-                                .clipShape(RoundedRectangle(cornerRadius: 16)) }
-                        }
                 }
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(selected ? ShelfDesign.selection : .clear, lineWidth: 1.5))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(selected ? ShelfDesign.selection.opacity(0.12) : .clear, lineWidth: 3).padding(-2))
@@ -513,7 +504,7 @@ private struct ClipCard: View {
     }
     @ViewBuilder private var cardMenu: some View {
 
-                if clip.kind == .files, let url = previewFileURL(clip) {
+                if let url = previewFileURL(clip) {
                     Button(L("使用 %@ 打开", NSWorkspace.shared.urlForApplication(toOpen: url).map { (FileManager.default.displayName(atPath: $0.path) as NSString).deletingPathExtension } ?? L("默认应用"))) { NSWorkspace.shared.open(url) }
                     Button(L("在 Finder 中显示")) { NSWorkspace.shared.activateFileViewerSelecting(filePreviewURLs(clip)) }
                     Divider()
@@ -565,11 +556,19 @@ private struct ClipCardContent: View, Equatable {
             VStack(alignment: .leading, spacing: 6) {
                 FileCardThumbnail(urls: filePreviewURLs(clip), refreshID: refreshID)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).clipped().allowsHitTesting(false)
-                Text(clip.text).font(.system(size: 10.5)).lineLimit(2).foregroundStyle(.secondary)
+                if filePreviewURLs(clip).isEmpty {
+                    Text(clip.text).font(.system(size: 10.5)).lineLimit(2).foregroundStyle(.secondary)
+                } else {
+                    FileClipLocation(urls: filePreviewURLs(clip))
+                }
             }
         } else if let image {
-            HighlightedClipImage(image: image, highlights: imageHighlights)
-                .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 6) {
+                HighlightedClipImage(image: image, highlights: imageHighlights)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
+                if !filePreviewURLs(clip).isEmpty { FileClipLocation(urls: filePreviewURLs(clip)) }
+            }
         } else {
             Text(cardClipText(clip)).font(.system(size: 13)).lineSpacing(3.5).multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).clipped()

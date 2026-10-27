@@ -29,9 +29,10 @@ struct ColorTests {
     @Test func previewFormatsColorSpacesAndChoosesReadableText() {
         let red = ClipColor(value: 0xFF0000)
         #expect(red.hex == "#FF0000")
-        #expect(red.summary == "RGB 255, 0, 0 · HSL 0, 100, 50 · HSB 0, 100, 100")
-        #expect(ClipColor(value: 0).summary == "RGB 0, 0, 0 · HSL 0, 0, 0 · HSB 0, 0, 0")
-        #expect(ClipColor(value: 0xFFFFFF).summary == "RGB 255, 255, 255 · HSL 0, 0, 100 · HSB 0, 0, 100")
+        #expect(red.codes == ["rgb(255, 0, 0)", "hsl(0, 100%, 50%)", "hsb(0, 100%, 100%)"])
+        #expect(ClipColor(value: 0).codes == ["rgb(0, 0, 0)", "hsl(0, 0%, 0%)", "hsb(0, 0%, 0%)"])
+        #expect(ClipColor(value: 0xFFFFFF).codes == ["rgb(255, 255, 255)", "hsl(0, 0%, 100%)", "hsb(0, 0%, 100%)"])
+        #expect(ClipColor(value: 0xEA4336).usesLightText)
         #expect(ClipColor(value: 0).usesLightText)
         #expect(!ClipColor(value: 0xFFFFFF).usesLightText)
     }

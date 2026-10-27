@@ -26,8 +26,7 @@ struct LiveTextImage: NSViewRepresentable {
                 guard !Task.isCancelled, let view else { return }
                 view.overlay.analysis = analysis
                 view.overlay.selectableItemsHighlighted = false
-                view.status.stringValue = L("未识别到可选择的文字")
-                view.status.isHidden = analysis.hasResults(for: .text)
+                view.status.isHidden = true
             } catch {
                 guard !Task.isCancelled else { return }
                 view?.status.stringValue = L("图片文字识别失败，请重新打开预览")
