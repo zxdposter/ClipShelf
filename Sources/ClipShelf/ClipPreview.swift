@@ -8,6 +8,7 @@ struct ClipPreview: View {
     let clip: Clip
     @ObservedObject var model: ClipboardModel
     let close: () -> Void
+    private var clipColor: ClipColor? { clip.kind == .color ? hexColorValue(clip.text).map { ClipColor(value: $0) } : nil }
     private var webURL: URL? { clip.kind == .link ? safeLinkURL(clip) : nil }
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +37,8 @@ struct ClipPreview: View {
             } else if clip.kind == .image, let data = clip.items.flatMap({ $0 }).first(where: { ["public.png", "public.tiff"].contains($0.type) })?.data,
                let image = NSImage(data: data) {
                 HighlightedClipImage(image: image, highlights: model.imageTextHighlights(for: clip), selectionIdentity: clip.fingerprint).padding(12)
+            } else if let clipColor {
+                ColorClipPreview(color: clipColor)
             } else if clip.kind == .files, let url = previewFileURL(clip) {
                 FileQuickPreview(url: url).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let url = webURL {
@@ -45,7 +48,7 @@ struct ClipPreview: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading).padding(12) }
             }
             Divider()
-            Text(clip.kind == .text || clip.kind == .link ? previewStatistics(clip.text) : Int64(clip.byteCount).formatted(.byteCount(style: .file).locale(Locale(identifier: AppLocalization.shared.language.rawValue))))
+            Text(clipColor?.summary ?? ([.text, .link, .color].contains(clip.kind) ? previewStatistics(clip.text) : Int64(clip.byteCount).formatted(.byteCount(style: .file).locale(Locale(identifier: AppLocalization.shared.language.rawValue)))))
                 .font(.system(size: 12)).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
         }.frame(width: webURL == nil ? 660 : 900, height: webURL == nil ? 450 : 620).background(ShelfDesign.paper).tint(ShelfDesign.accent)

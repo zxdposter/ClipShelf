@@ -13,6 +13,7 @@ enum ShelfDesign {
     static func typeColor(_ kind: ClipKind) -> Color {
         switch kind {
         case .text: accent
+        case .color: .pink
         case .link: Color(nsColor: adaptive(light: (0.29, 0.39, 0.54), dark: (0.58, 0.69, 0.84)))
         case .image: Color(nsColor: adaptive(light: (0.44, 0.38, 0.51), dark: (0.72, 0.65, 0.79)))
         case .files: Color(nsColor: adaptive(light: (0.48, 0.39, 0.28), dark: (0.77, 0.68, 0.54)))

@@ -691,9 +691,7 @@ final class ClipboardModel: ObservableObject {
             text = files.compactMap { URL(string: $0)?.lastPathComponent }.joined(separator: "\n")
             identity = (try? JSONEncoder().encode(files)) ?? Data(files.joined(separator: "\n").utf8)
         } else if let string = pasteboard.string(forType: .string), !string.isEmpty {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            let url = URL(string: trimmed)
-            kind = (url?.scheme == "http" || url?.scheme == "https") && !trimmed.contains(where: \.isWhitespace) ? .link : .text
+            kind = textClipKind(string)
             text = string; identity = Data(string.utf8)
         } else if let url = flat.first(where: { $0.type == "public.url" }), let value = String(data: url.data, encoding: .utf8) {
             kind = .link; text = value; identity = url.data
@@ -774,7 +772,7 @@ final class ClipboardModel: ObservableObject {
         // Demo only previews controls and never touches the user's clipboard.
         if demo { copiedID = clips.first?.id; return true }
         let objects: [NSPasteboardItem]
-        if (plainText && clips.allSatisfy({ $0.kind != .image })) || (clips.count > 1 && clips.allSatisfy({ $0.kind == .text || $0.kind == .link })) {
+        if (plainText && clips.allSatisfy({ $0.kind != .image })) || (clips.count > 1 && clips.allSatisfy({ [.text, .link, .color].contains($0.kind) })) {
             let item = NSPasteboardItem()
             item.setString(clips.map(\.text).joined(separator: "\n"), forType: .string)
             objects = [item]

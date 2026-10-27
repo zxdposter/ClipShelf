@@ -6,6 +6,27 @@ import ClipboardCore
 
 struct ClipboardIntegrationTests {
     @Test @MainActor
+    func colorCaptureKeepsOriginalClipboardText() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let board = NSPasteboard(name: .init("ClipShelf-color-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        let preferences = isolatedPreferences()
+        let model = ClipboardModel(pasteboard: board, storageURL: directory.appendingPathComponent("history.plist"), preferences: preferences)
+        let text = "  #aBcDeF\n"
+        board.clearContents(); board.setString(text, forType: .string)
+        await model.capture(expectedChange: board.changeCount, source: nil)
+        let clip = try #require(model.history.clips.first)
+        #expect(clip.kind == .color && clip.text == text)
+        #expect(model.copy(clip))
+        #expect(board.string(forType: .string) == text)
+        model.filter = .color
+        #expect(model.visible.map(\.id) == [clip.id])
+        #expect(await model.finishPendingStorage())
+        #expect(try History.load(from: directory.appendingPathComponent("history.plist")).clips.first?.kind == .color)
+    }
+
+    @Test @MainActor
     func imageFileClassificationMigratesAndKeepsClipboardFormats() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

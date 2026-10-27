@@ -141,7 +141,7 @@ final class Preferences: ObservableObject {
 
     }
     func captures(_ kind: ClipKind) -> Bool {
-        switch kind { case .text: textEnabled; case .link: linkEnabled; case .image: imageEnabled; case .files: filesEnabled }
+        switch kind { case .text, .color: textEnabled; case .link: linkEnabled; case .image: imageEnabled; case .files: filesEnabled }
     }
     func excludes(_ bundle: String) -> Bool {
         !bundle.isEmpty && excludedApps.split(whereSeparator: \.isNewline)

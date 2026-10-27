@@ -9,6 +9,14 @@ import ClipboardCore
 @main
 struct ClipShelfApp {
     @MainActor static func main() {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        let command = URL(fileURLWithPath: CommandLine.arguments[0]).lastPathComponent
+        if command == "fcp" || command == "cpx" {
+            exit(FileCopyCommand.run(arguments, textContents: command == "cpx"))
+        }
+        if arguments.first == "--copy-files" || arguments.first == "--copy-file-text" {
+            exit(FileCopyCommand.run(Array(arguments.dropFirst()), textContents: arguments.first == "--copy-file-text"))
+        }
         if CommandLine.arguments.contains("--check-accessibility") {
             let trusted = AXIsProcessTrusted()
             print(trusted ? "Accessibility: granted" : "Accessibility: not granted")
@@ -159,7 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if let clip = self.model.visible.first(where: { $0.id == self.model.selectedID && self.model.selection.ids.contains($0.id) }) {
                 if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "e" {
                     if clip.kind == .image { self.model.beginImageEdit(clip) }
-                    else if [.text, .link].contains(clip.kind) { self.model.beginTextEdit(clip) }
+                    else if [.text, .link, .color].contains(clip.kind) { self.model.beginTextEdit(clip) }
                     return nil
                 }
                 if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "r" { self.model.beginRename(clip); return nil }

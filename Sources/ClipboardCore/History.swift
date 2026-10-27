@@ -3,7 +3,23 @@ import CryptoKit
 import UniformTypeIdentifiers
 
 public enum ClipKind: String, Codable, CaseIterable, Sendable {
-    case text, link, image, files
+    case text, link, image, files, color
+}
+
+public func hexColorValue(_ text: String) -> UInt32? {
+    let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let hex = value.hasPrefix("#") ? String(value.dropFirst()) : value
+    guard hex.utf8.count == 6,
+          hex.utf8.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }),
+          value.hasPrefix("#") || hex.utf8.contains(where: { (65...70).contains($0) || (97...102).contains($0) }) else { return nil }
+    return UInt32(hex, radix: 16)
+}
+
+public func textClipKind(_ text: String) -> ClipKind {
+    if hexColorValue(text) != nil { return .color }
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let url = URL(string: trimmed)
+    return (url?.scheme == "http" || url?.scheme == "https") && !trimmed.contains(where: \.isWhitespace) ? .link : .text
 }
 
 public struct Representation: Codable, Equatable, Sendable {
@@ -198,9 +214,9 @@ public struct History: Sendable {
         clips[index].title = name.isEmpty ? nil : name
     }
     public mutating func editText(id: UUID, text: String) throws {
-        guard let index = clips.firstIndex(where: { $0.id == id }), [.text, .link].contains(clips[index].kind) else { return }
+        guard let index = clips.firstIndex(where: { $0.id == id }), [.text, .link, .color].contains(clips[index].kind) else { return }
         let old = clips[index]
-        let edited = Clip(kind: old.kind, text: text, sourceName: old.sourceName, sourceBundle: old.sourceBundle,
+        let edited = Clip(kind: textClipKind(text), text: text, sourceName: old.sourceName, sourceBundle: old.sourceBundle,
                           items: [[Representation(type: "public.utf8-plain-text", data: Data(text.utf8))]],
                           identity: Data(text.utf8), copiedAt: old.copiedAt)
         try replace(id: id, with: edited)

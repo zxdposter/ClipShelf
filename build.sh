@@ -33,6 +33,8 @@ fi
 for architecture in "${architectures[@]}"; do
     lipo "$app_dir/Contents/MacOS/ClipShelf" -verify_arch "$architecture"
 done
+ln -sfn ClipShelf "$app_dir/Contents/MacOS/fcp"
+ln -sfn ClipShelf "$app_dir/Contents/MacOS/cpx"
 cp "$project_dir/Assets/ClipShelf.icns" "$app_dir/Contents/Resources/ClipShelf.icns"
 cat > "$app_dir/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -46,8 +48,8 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
 <key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
 <key>CFBundleLocalizations</key><array><string>zh-Hans</string><string>en</string></array>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.12.1</string>
-<key>CFBundleVersion</key><string>45</string>
+<key>CFBundleShortVersionString</key><string>0.13.0</string>
+<key>CFBundleVersion</key><string>46</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>

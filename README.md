@@ -14,11 +14,21 @@ A clipboard manager for Mac, with searchable history, collections, and a card-ba
 
 ## Download
 
-[**Download for Apple silicon**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.1/ClipShelf-0.12.1-macOS-arm64.dmg) · [**Download for Intel**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.1/ClipShelf-0.12.1-macOS-x86_64.dmg) · [ZIP downloads and release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.12.1)
+[**Download for Apple silicon**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.0/ClipShelf-0.13.0-macOS-arm64.dmg) · [**Download for Intel**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.0/ClipShelf-0.13.0-macOS-x86_64.dmg) · [ZIP downloads and release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.13.0)
 
-**0.12.1** requires **macOS 14 or later** and supports **Apple silicon and Intel** Macs with separate downloads. Homebrew automatically chooses the matching architecture. Open the DMG and drag ClipShelf into Applications. Intel cross-compilation and signature checks pass; Intel hardware testing is still pending.
+**0.13.0** requires **macOS 14 or later** and supports **Apple silicon and Intel** Macs with separate downloads. Homebrew automatically chooses the matching architecture. Open the DMG and drag ClipShelf into Applications. Intel cross-compilation and signature checks pass; Intel hardware testing is still pending.
 
 This release has not been notarized by Apple. If macOS blocks opening it, review the download and allow it in **System Settings → Privacy & Security → Open Anyway**.
+
+### If macOS blocks opening ClipShelf
+
+After moving ClipShelf to Applications, try **System Settings → Privacy & Security → Open Anyway**. If macOS still reports that the app is damaged or cannot be opened, and you trust the download, open Terminal and run:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/ClipShelf.app
+```
+
+This removes the download quarantine attribute from ClipShelf and its contents. Open ClipShelf again afterward. If you installed it elsewhere, replace the path with its actual location. Only run this for a copy you trust; it does not notarize the app.
 
 ### Install with Homebrew
 
@@ -34,6 +44,7 @@ If Homebrew asks for explicit trust, run `brew trust --cask zxdposter/tap/clipsh
 
 Copy text, links, images, or files, then bring up ClipShelf to find them again. Browse clear, readable cards without leaving your current task behind.
 
+- **Color cards and previews** — standalone six-digit HEX values appear as solid-color cards with centered HEX labels. Press Space for a larger swatch with RGB, HSL, and HSB values. Text contrast adjusts to the color; copying preserves the original value.
 - **Clipboard history** — keep recent copies together instead of losing the previous one.
 - **No duplicate clutter** — copying the same content brings its existing card back to the front.
 - **Search and filter** — find content, saved titles, or app names; search Chinese with full pinyin or initials (for example, `zhongwen` or `zw` for 中文), and narrow results by content type.
@@ -133,6 +144,53 @@ Changes take effect immediately and your choice is remembered after restarting. 
 | Close search or hide the shelf | **Esc** |
 
 Activation shortcuts and paste modifiers can be customized in Settings. Text fields keep their usual editing shortcuts.
+
+## Terminal commands: `fcp` and `cpx`
+
+ClipShelf bundles two commands. Both work without launching the graphical app, leave the original files unchanged, and use English for help, success messages, and errors.
+
+| Command | Clipboard contents | Example |
+| --- | --- | --- |
+| `fcp [--] FILE...` | File references; supports multiple files and folders | `fcp ./report.pdf ./assets` |
+| `cpx [--] FILE` | The entire text of one file, preserving line breaks | `cpx ./notes.txt` |
+
+### Set up the commands
+
+After installing this version in Applications, link both commands into a directory on your `PATH` (for example, `~/.local/bin`):
+
+```sh
+mkdir -p "$HOME/.local/bin"
+ln -s /Applications/ClipShelf.app/Contents/MacOS/fcp "$HOME/.local/bin/fcp"
+ln -s /Applications/ClipShelf.app/Contents/MacOS/cpx "$HOME/.local/bin/cpx"
+```
+
+If `~/.local/bin` is not on your `PATH`, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and open a new Terminal window. If either command already exists, inspect it before replacing it. If the app is installed elsewhere, adjust the source paths above. Moving or removing the app breaks these links.
+
+### Copy files with `fcp`
+
+```sh
+fcp ./report.pdf
+fcp "./design draft.png" ./assets
+fcp -- -filename.txt
+fcp --help
+```
+
+Paste into Finder with **⌘V**. `fcp` copies file references rather than file contents or path text. Keep the original files available until you paste. Success prints `Files copied to the clipboard.`
+
+### Copy file text with `cpx`
+
+```sh
+cpx ./notes.txt
+cpx "./meeting notes.md"
+cpx -- -filename.txt
+cpx --help
+```
+
+Paste into an editor or another text field with **⌘V**. `cpx` reads the full file without truncation and uses the system's text encoding detection, with no UTF-8-only check. It takes one file per invocation and rejects folders. Success prints `File text copied to the clipboard.`
+
+Both commands check and read their inputs before changing the clipboard. Invalid paths or a text read failure leave the clipboard unchanged and return a nonzero exit code. Use `--` before paths beginning with `-`.
+
+Both commands are included in version 0.13.0 and later. Homebrew installs their command links automatically. For a source build, replace `/Applications/ClipShelf.app` above with the path to your built app.
 
 ## Build from source
 

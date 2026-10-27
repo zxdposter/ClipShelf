@@ -14,11 +14,21 @@
 
 ## 下载
 
-[**下载 Apple 芯片版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.1/ClipShelf-0.12.1-macOS-arm64.dmg) · [**下载 Intel 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.12.1/ClipShelf-0.12.1-macOS-x86_64.dmg) · [ZIP 下载与更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.12.1)
+[**下载 Apple 芯片版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.0/ClipShelf-0.13.0-macOS-arm64.dmg) · [**下载 Intel 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.0/ClipShelf-0.13.0-macOS-x86_64.dmg) · [ZIP 下载与更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.13.0)
 
-**0.12.1** 需要 **macOS 14 或更新版本**，分别提供 **Apple 芯片和 Intel** 安装包，Homebrew 会自动选择对应架构。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。Intel 交叉编译与签名检查通过，尚未在 Intel 真机测试。
+**0.13.0** 需要 **macOS 14 或更新版本**，分别提供 **Apple 芯片和 Intel** 安装包，Homebrew 会自动选择对应架构。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。Intel 交叉编译与签名检查通过，尚未在 Intel 真机测试。
 
 此版本尚未经过 Apple 公证。如果 macOS 阻止打开，请确认下载来源后，在 **系统设置 → 隐私与安全性 → 仍要打开** 中允许启动。
+
+### macOS 阻止打开时
+
+将 ClipShelf 移入「应用程序」后，先尝试 **系统设置 → 隐私与安全性 → 仍要打开**。如果仍提示「应用已损坏」或「无法打开」，且你确认下载来源可信，可打开「终端」运行：
+
+```sh
+xattr -dr com.apple.quarantine /Applications/ClipShelf.app
+```
+
+这会移除 ClipShelf 及其内部文件的下载隔离属性，完成后重新打开应用即可。如果安装在其他位置，请替换为实际路径。仅对可信的应用副本执行；此操作不会为应用添加 Apple 公证。
 
 ### 通过 Homebrew 安装
 
@@ -34,6 +44,7 @@ brew install --cask zxdposter/tap/clipshelf
 
 复制文字、链接、图片或文件后，打开 ClipShelf 就能再次找到。用清晰的卡片浏览历史，减少在不同应用之间来回切换。
 
+- **颜色卡片与预览**：独立的六位 HEX 色值显示为整张色块卡片，HEX 居中；按空格查看大色块及 RGB、HSL、HSB 数值。文字自动选择对比度更高的颜色，复制保留原始值。
 - **剪贴板历史**：集中保存最近复制的内容，不再被下一次复制覆盖。
 - **自动去重**：再次复制相同内容时，将原有卡片移到最前面。
 - **搜索与筛选**：按内容、保存的标题或来源应用查找；中文支持全拼与首字母（如用 `zhongwen` 或 `zw` 搜索「中文」），也可按内容类型筛选。
@@ -133,6 +144,53 @@ brew install --cask zxdposter/tap/clipshelf
 | 关闭搜索或收起面板 | **Esc** |
 
 可在设置中修改呼出、顺序粘贴、收藏集切换快捷键及粘贴修饰键。输入框内仍保留常用的文字编辑快捷键。
+
+## 终端命令：`fcp` 与 `cpx`
+
+ClipShelf 内附带两个命令，无需启动图形界面即可使用，不修改原文件。帮助、成功和错误提示均为英文。
+
+| 命令 | 复制到剪贴板的内容 | 示例 |
+| --- | --- | --- |
+| `fcp [--] FILE...` | 文件引用，支持多个文件和文件夹 | `fcp ./report.pdf ./assets` |
+| `cpx [--] FILE` | 一个文件的全部文本，保留换行 | `cpx ./notes.txt` |
+
+### 安装命令
+
+将此版本安装到「应用程序」后，把两个命令链接到 `PATH` 中的目录，例如 `~/.local/bin`：
+
+```sh
+mkdir -p "$HOME/.local/bin"
+ln -s /Applications/ClipShelf.app/Contents/MacOS/fcp "$HOME/.local/bin/fcp"
+ln -s /Applications/ClipShelf.app/Contents/MacOS/cpx "$HOME/.local/bin/cpx"
+```
+
+如果 `~/.local/bin` 尚未加入 `PATH`，在 `~/.zshrc` 中添加 `export PATH="$HOME/.local/bin:$PATH"`，再打开新的终端窗口。如果已有同名命令，请先确认用途再替换。应用安装在其他位置时，请调整上述源路径；移动或删除应用后，链接会失效。
+
+### 用 `fcp` 复制文件
+
+```sh
+fcp ./report.pdf
+fcp "./设计草稿.png" ./assets
+fcp -- -filename.txt
+fcp --help
+```
+
+随后到 Finder 按 **⌘V** 粘贴。`fcp` 复制文件引用，不会把文件内容或路径文字作为复制结果；粘贴前请保持原文件可访问。成功提示为 `Files copied to the clipboard.`。
+
+### 用 `cpx` 复制文件全文
+
+```sh
+cpx ./notes.txt
+cpx "./会议记录.md"
+cpx -- -filename.txt
+cpx --help
+```
+
+随后在编辑器或其他文本输入框中按 **⌘V** 粘贴。`cpx` 读取完整内容，不截断文本，使用系统自动识别文本编码，不做仅允许 UTF-8 的检查。每次接收一个文件，不接受文件夹。成功提示为 `File text copied to the clipboard.`。
+
+两个命令均在输入检查、读取完成后才修改剪贴板。路径无效或文本读取失败时保留原剪贴板，并返回非零退出码。路径以 `-` 开头时，请在路径前加 `--`。
+
+0.13.0 及更新版本内附带这两个命令，通过 Homebrew 安装时会自动创建命令链接。从源码构建时，请将上面的 `/Applications/ClipShelf.app` 替换为构建产物的实际路径。
 
 ## 从源码构建
 

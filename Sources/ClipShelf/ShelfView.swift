@@ -3,8 +3,8 @@ import SwiftUI
 import ClipboardCore
 
 extension ClipKind {
-    var label: String { switch self { case .text: L("文本"); case .link: L("链接"); case .image: L("图片"); case .files: L("文件") } }
-    var symbol: String { switch self { case .text: "text.alignleft"; case .link: "link"; case .image: "photo"; case .files: "folder" } }
+    var label: String { switch self { case .color: L("颜色"); case .text: L("文本"); case .link: L("链接"); case .image: L("图片"); case .files: L("文件") } }
+    var symbol: String { switch self { case .color: "paintpalette"; case .text: "text.alignleft"; case .link: "link"; case .image: "photo"; case .files: "folder" } }
 }
 
 let boardColors: [Color] = [.red, .blue, .orange, .green, .purple, .pink]
@@ -421,8 +421,10 @@ private struct ClipCardFace: View, Equatable {
     private var quickPasteNumber: Int? { state.quickPasteNumber }
     private var selected: Bool { state.selected }
     private var language: AppLanguage { state.language }
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var renameFocused: Bool
     private var appearance: SourceAppearance { SourceAppearance.forApp(clip.sourceBundle, fallback: clip.kind.symbol) }
+    private var clipColor: ClipColor? { clip.kind == .color ? hexColorValue(clip.text).map { ClipColor(value: $0) } : nil }
     private func relativeTime(_ now: Date) -> String {
         if now.timeIntervalSince(clip.copiedAt) < 60 { return L("刚刚") }
         let formatter = RelativeDateTimeFormatter(); formatter.locale = Locale(identifier: AppLocalization.shared.language.rawValue); formatter.unitsStyle = .short
@@ -440,17 +442,18 @@ private struct ClipCardFace: View, Equatable {
                 ClipCardContent(clip: clip, linkPreviews: state.linkPreviews, refreshID: state.refreshID, imageHighlights: state.imageHighlights)
                     .equatable().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 ClipCardFooter(clip: clip, quickPasteNumber: quickPasteNumber, language: language).equatable()
+                    .environment(\.colorScheme, clipColor.map { $0.usesLightText ? .dark : .light } ?? colorScheme)
                     .offset(y: 4)
             }.padding(14).frame(width: ShelfCardLayout.width, height: ShelfCardLayout.height)
                 .background {
-                    RoundedRectangle(cornerRadius: 16).fill(ShelfDesign.card)
+                    RoundedRectangle(cornerRadius: 16).fill(clipColor?.color ?? ShelfDesign.card)
                         .overlay {
-                            LinearGradient(stops: [
+                            if clipColor == nil { LinearGradient(stops: [
                                 .init(color: .clear, location: 0.55),
                                 .init(color: Color(nsColor: appearance.color).opacity(0.035), location: 0.78),
                                 .init(color: Color(nsColor: appearance.color).opacity(0.13), location: 1)
                             ], startPoint: .top, endPoint: .bottom)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .clipShape(RoundedRectangle(cornerRadius: 16)) }
                         }
                 }
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(selected ? ShelfDesign.selection : .clear, lineWidth: 1.5))
@@ -522,7 +525,7 @@ private struct ClipCard: View {
                 Button(L("以纯文本粘贴"), action: pastePlain).keyboardShortcut(.return, modifiers: .shift)
                 Button(L("复制")) { model.copy(model.targets(for: clip)) }.keyboardShortcut("c")
                 Divider()
-                if [.text, .link].contains(clip.kind) { Button(L("编辑")) { model.beginTextEdit(clip) }.keyboardShortcut("e") }
+                if [.text, .link, .color].contains(clip.kind) { Button(L("编辑")) { model.beginTextEdit(clip) }.keyboardShortcut("e") }
                 if clip.kind == .image { Button(L("编辑")) { model.beginImageEdit(clip) }.keyboardShortcut("e") }
                 Button(L("重命名")) { model.beginRename(clip) }.keyboardShortcut("r")
                 Button(model.selectedBoardID == nil ? L("删除") : L("移出当前收藏集"), role: model.selectedBoardID == nil ? .destructive : nil, action: remove).keyboardShortcut(.delete, modifiers: [])
@@ -551,7 +554,12 @@ private struct ClipCardContent: View, Equatable {
         clip.items.flatMap { $0 }.first(where: { $0.type == "public.png" || $0.type == "public.tiff" }).flatMap { NSImage(data: $0.data) }
     }
     var body: some View {
-        if clip.kind == .link, linkPreviews, let url = safeLinkURL(clip) {
+        if clip.kind == .color, let value = hexColorValue(clip.text) {
+            let color = ClipColor(value: value)
+            Text(color.hex).font(.system(size: 22, weight: .medium, design: .monospaced))
+                .foregroundStyle(color.textColor)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if clip.kind == .link, linkPreviews, let url = safeLinkURL(clip) {
             LinkPreview(url: url).allowsHitTesting(false).clipShape(RoundedRectangle(cornerRadius: 8))
         } else if clip.kind == .files {
             VStack(alignment: .leading, spacing: 6) {
@@ -581,15 +589,15 @@ private struct ClipCardFooter: View, Equatable {
             Text(clip.sourceName).font(.system(size: 9.5, weight: .medium)).lineLimit(1).foregroundStyle(.secondary)
             Spacer(minLength: 2)
             ZStack(alignment: .trailing) {
-                Text(clip.kind == .text || clip.kind == .link ? L("%@ 个字符", clip.text.count) : Int64(clip.byteCount).formatted(.byteCount(style: .file).locale(Locale(identifier: language.rawValue))))
-                    .opacity(quickPasteNumber == nil ? 1 : 0)
-                    .accessibilityHidden(quickPasteNumber != nil)
+                Text([.text, .link, .color].contains(clip.kind) ? L("%@ 个字符", clip.text.count) : Int64(clip.byteCount).formatted(.byteCount(style: .file).locale(Locale(identifier: language.rawValue))))
+                    .opacity(quickPasteNumber == nil && clip.kind != .color ? 1 : 0)
+                    .accessibilityHidden(quickPasteNumber != nil || clip.kind == .color)
                 if let quickPasteNumber {
                     Text(String(quickPasteNumber)).accessibilityLabel(L("快速粘贴 %@", quickPasteNumber))
                 }
             }.font(.system(size: 9.5)).foregroundStyle(.secondary).lineLimit(1)
             Image(systemName: clip.kind.symbol)
-                .font(.system(size: 10)).foregroundStyle(ShelfDesign.typeColor(clip.kind))
+                .font(.system(size: 10)).foregroundStyle(clip.kind == .color ? Color.primary : ShelfDesign.typeColor(clip.kind))
                 .accessibilityLabel(clip.kind.label)
         }
     }
