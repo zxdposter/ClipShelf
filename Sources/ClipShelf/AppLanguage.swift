@@ -30,6 +30,8 @@ final class AppLocalization: ObservableObject {
         "网页加载失败": "Could Not Load Page",
         "网页无法在预览中显示，请在浏览器中打开。": "This page cannot be displayed in the preview. Open it in your browser.",
         "外观": "Appearance",
+        "卡片渐变背景": "Card Gradient Background",
+        "按来源应用为普通卡片显示渐变色。": "Tint regular cards with a gradient based on their source app.",
         "跟随系统": "System",
         "浅色": "Light",
         "深色": "Dark",

@@ -73,6 +73,7 @@ final class Preferences: ObservableObject {
     @Published var excludedApps: String { didSet { defaults.set(excludedApps, forKey: "excludedApps") } }
     @Published var shortcut: ShelfShortcut { didSet { defaults.set(shortcut.rawValue, forKey: "shortcut") } }
 
+    @Published var cardGradientEnabled: Bool { didSet { defaults.set(cardGradientEnabled, forKey: "cardGradientEnabled") } }
     @Published var soundEnabled: Bool { didSet { defaults.set(soundEnabled, forKey: "soundEnabled") } }
     @Published var pasteDestination: PasteDestination { didSet { defaults.set(pasteDestination.rawValue, forKey: "pasteDestination") } }
     @Published var alwaysPlainText: Bool { didSet { defaults.set(alwaysPlainText, forKey: "alwaysPlainText") } }
@@ -121,6 +122,7 @@ final class Preferences: ObservableObject {
         filesEnabled = defaults.object(forKey: "capture.files") as? Bool ?? true
         excludedApps = defaults.string(forKey: "excludedApps") ?? "com.apple.Passwords\ncom.apple.keychainaccess"
         shortcut = ShelfShortcut(rawValue: defaults.string(forKey: "shortcut") ?? "") ?? .shiftCommandV
+        cardGradientEnabled = defaults.bool(forKey: "cardGradientEnabled")
         soundEnabled = defaults.object(forKey: "soundEnabled") as? Bool ?? true
         pasteDestination = PasteDestination(rawValue: defaults.string(forKey: "pasteDestination") ?? "") ?? .activeApplication
         alwaysPlainText = defaults.bool(forKey: "alwaysPlainText")

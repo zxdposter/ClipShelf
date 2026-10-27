@@ -156,6 +156,8 @@ struct SettingsView: View {
                     }.labelsHidden().pickerStyle(.menu).frame(width: 120)
                 }.padding(.vertical, 9)
                 Divider()
+                toggle(L("卡片渐变背景"), subtitle: L("按来源应用为普通卡片显示渐变色。"), value: $preferences.cardGradientEnabled)
+                Divider()
                 toggle(L("登录时打开"), value: Binding(get: { state.loginEnabled }, set: state.setLogin)).disabled(state.loginBusy)
                 if SMAppService.mainApp.status == .requiresApproval { Button(L("前往系统设置批准")) { SMAppService.openSystemSettingsLoginItems() }.font(.system(size: 11)).padding(.bottom, 8) }
                 Divider()

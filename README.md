@@ -50,7 +50,7 @@ Copy text, links, images, or files, then bring up ClipShelf to find them again. 
 - **Search and filter** — find content, saved titles, or app names; search Chinese with full pinyin or initials (for example, `zhongwen` or `zw` for 中文), and narrow results by content type.
 - **Search text in images** — on-device Apple OCR recognizes Chinese and English in the background, including existing image history. Search recognized text in Chinese, full pinyin, or initials, with matching words highlighted in image cards and enlarged previews. Single image files are recognized as images, including previously misclassified history. Results are cached; recognition yields while typing, composing Chinese, or navigating cards.
 - **Filter by source app** — choose one or more apps from the filter menu or inline suggestions. Removable app tokens combine with keywords and content types; when they overflow, a count badge shows the full list on hover and individual removal on click. Use ↑↓ and Return to choose a suggestion; otherwise Return focuses results, a second Return pastes, and Tab / Shift-Tab selects the next / previous card.
-- **File locations** — files, folders, and image files with an original file URL show their full paths on cards and in previews, with a Show in Finder button. Long paths and multiple locations can be scrolled and selected for copying.
+- **File locations** — files, folders, and image files with an original file URL show their full paths in previews, with a Show in Finder button. Long paths and multiple locations can be scrolled and selected for copying.
 - **Keep the formatting** — see formatted text, images, and file thumbnails right on the cards.
 - **Preview with Space** — take a closer look at text, images, or files before pasting. Select Chinese or English text directly inside an image preview and copy it with **⌘C** or the context menu; **⌘A** selects all recognized text. Link previews open the actual webpage in a scrollable, temporary WebKit session, with back/forward navigation and a manual option to open your browser. The page loads only when you open its preview; browser logins are not shared.
 - **Recognize the source** — app icons and colored card footers show where each item came from.
@@ -110,6 +110,8 @@ Choose **English** or **中文**, set your own shortcuts, and decide how long to
 The interface combines a frosted-glass shelf, readable cards, and source-app colors. Open and dismiss it with a shortcut whenever you need it.
 
 ![Current settings with English selected and history retention set to Forever](docs/images/settings-en.jpg)
+
+In **Settings → General**, turn on **Card Gradient Background** to tint regular cards by source app. It is off by default; color swatches always keep their actual color.
 
 ## Dark mode
 

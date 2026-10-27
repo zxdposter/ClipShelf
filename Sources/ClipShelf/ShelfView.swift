@@ -73,6 +73,7 @@ struct ShelfView: View {
         .clipShape(RoundedRectangle(cornerRadius: 22))
         .animation(motion, value: model.selectedBoardID)
         .animation(motion, value: model.history.boards)
+        .onReceive(model.preferences.$cardGradientEnabled.dropFirst()) { _ in model.objectWillChange.send() }
         .onReceive(model.preferences.$quickPasteFromVisibleCards.dropFirst()) { _ in model.objectWillChange.send() }
         .onChange(of: model.creatingBoard) { _, value in if !value { boardFocused = false } }
         .onChange(of: model.editingBoardID) { _, id in if id == nil { boardFocused = false } }
@@ -396,6 +397,7 @@ struct ClipCardFaceState: Equatable {
     let renaming: Bool
     let renameDraft: String
     let linkPreviews: Bool
+    let cardGradientEnabled: Bool
     let refreshID: UUID
     let imageHighlights: [CGRect]
 
@@ -408,6 +410,7 @@ struct ClipCardFaceState: Equatable {
         renaming = model.renamingID == clip.id
         renameDraft = renaming ? model.renameDraft : ""
         linkPreviews = model.preferences.linkPreviews
+        cardGradientEnabled = model.preferences.cardGradientEnabled
         refreshID = model.presentationID
         imageHighlights = clip.kind == .image ? model.imageTextHighlights(for: clip) : []
     }
@@ -446,6 +449,17 @@ private struct ClipCardFace: View, Equatable {
             }.padding(14).frame(width: ShelfCardLayout.width, height: ShelfCardLayout.height)
                 .background {
                     RoundedRectangle(cornerRadius: 16).fill(clipColor?.color ?? ShelfDesign.card)
+                        .overlay {
+                            if clipColor == nil && state.cardGradientEnabled {
+                                let tint = Color(nsColor: SourceAppearance.forApp(clip.sourceBundle, fallback: clip.kind.symbol).color)
+                                LinearGradient(stops: [
+                                    .init(color: .clear, location: 0.55),
+                                    .init(color: tint.opacity(0.035), location: 0.78),
+                                    .init(color: tint.opacity(0.13), location: 1)
+                                ], startPoint: .top, endPoint: .bottom)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                            }
+                        }
                 }
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(selected ? ShelfDesign.selection : .clear, lineWidth: 1.5))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(selected ? ShelfDesign.selection.opacity(0.12) : .clear, lineWidth: 3).padding(-2))
@@ -556,19 +570,11 @@ private struct ClipCardContent: View, Equatable {
             VStack(alignment: .leading, spacing: 6) {
                 FileCardThumbnail(urls: filePreviewURLs(clip), refreshID: refreshID)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).clipped().allowsHitTesting(false)
-                if filePreviewURLs(clip).isEmpty {
-                    Text(clip.text).font(.system(size: 10.5)).lineLimit(2).foregroundStyle(.secondary)
-                } else {
-                    FileClipLocation(urls: filePreviewURLs(clip))
-                }
+                Text(clip.text).font(.system(size: 10.5)).lineLimit(2).foregroundStyle(.secondary)
             }
         } else if let image {
-            VStack(alignment: .leading, spacing: 6) {
-                HighlightedClipImage(image: image, highlights: imageHighlights)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
-                if !filePreviewURLs(clip).isEmpty { FileClipLocation(urls: filePreviewURLs(clip)) }
-            }
+            HighlightedClipImage(image: image, highlights: imageHighlights)
+                .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
         } else {
             Text(cardClipText(clip)).font(.system(size: 13)).lineSpacing(3.5).multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).clipped()
