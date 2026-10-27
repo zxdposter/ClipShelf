@@ -11,6 +11,7 @@ import ClipboardCore
     var chinese = false
     var model: ClipboardModel!
     var imageClip: Clip!
+    var colorClip: Clip!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task {
@@ -35,6 +36,10 @@ import ClipboardCore
         Clip(kind: .text, text: value, sourceName: app, sourceBundle: bundle,
              items: [[Representation(type: "public.utf8-plain-text", data: Data(value.utf8))]], identity: Data(value.utf8))
     }
+    func color(_ value: String) -> Clip {
+        Clip(kind: .color, text: value, sourceName: "Safari", sourceBundle: "com.apple.Safari",
+             items: [[Representation(type: "public.utf8-plain-text", data: Data(value.utf8))]], identity: Data(value.utf8))
+    }
     func fixture() throws -> History {
         let artwork = NSImage(size: NSSize(width: 1000, height: 640), flipped: false) { rect in
             NSColor(srgbRed: 0.96, green: 0.94, blue: 0.88, alpha: 1).setFill(); rect.fill()
@@ -57,7 +62,8 @@ import ClipboardCore
         let travel = text(chinese ? "京都 · 周末指南\n\n沿河散步，找一家小店。\n书店、庭院和咖啡馆。" : "Kyoto · Weekend guide\n\nTake the scenic route.\nFind a bookshop and a quiet cafe.", app: "Safari", bundle: "com.apple.Safari")
         let reply = text(chinese ? "常用回复\n\n谢谢你的分享！\n期待一起讨论下一步。" : "A thoughtful reply\n\nThanks for sharing!\nLooking forward to the next step.", app: chinese ? "邮件" : "Mail", bundle: "com.apple.mail")
         let pinyin = text("中文搜索\n\n" + (chinese ? "输入中文、全拼或首字母，\n都能找到保存的内容。" : "Find Chinese text with\nfull pinyin or initials."), app: chinese ? "备忘录" : "Notes", bundle: "com.apple.Notes")
-        var result = History(clips: [notes, travel, imageClip, reply, pinyin], boards: [
+        colorClip = color("#3B82F6")
+        var result = History(clips: [notes, colorClip, travel, imageClip, reply, pinyin], boards: [
             Pinboard(name: chinese ? "灵感" : "Ideas", color: 1), Pinboard(name: chinese ? "旅行" : "Travel", color: 2),
             Pinboard(name: chinese ? "常用回复" : "Replies", color: 3)
         ])
@@ -68,6 +74,12 @@ import ClipboardCore
     }
     func shelf() -> some View {
         ShelfView(model: model, dismiss: {}, openSettings: {}, enableCapture: {}, paste: { _, _ in })
+    }
+    func hasPendingImageAnalysis(in view: NSView) -> Bool {
+        if let image = view as? LiveTextImageView {
+            return !image.status.isHidden && image.status.stringValue == L("正在识别图片文字…")
+        }
+        return view.subviews.contains { hasPendingImageAnalysis(in: $0) }
     }
     func shot<V: View>(_ name: String, _ view: V, width: CGFloat = 1180, height: CGFloat = 310, dark: Bool = false) async throws {
         let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
@@ -81,6 +93,11 @@ import ClipboardCore
         hosting.frame = NSRect(x: 0, y: 0, width: width, height: height)
         hosting.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(350))
+        for _ in 0..<200 {
+            if !hasPendingImageAnalysis(in: hosting) { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard !hasPendingImageAnalysis(in: hosting) else { throw CocoaError(.featureUnsupported) }
         hosting.layoutSubtreeIfNeeded(); hosting.displayIfNeeded()
         guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { throw CocoaError(.fileWriteUnknown) }
         hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
@@ -102,6 +119,12 @@ import ClipboardCore
         await model.waitForImageText()
         guard model.imageTextError == nil else { throw CocoaError(.featureUnsupported) }
         try await shot("clipboard", shelf())
+        let originalHistory = model.history
+        for value in ["#F8FAFC", "#0F172A", "#FACC15", "#EA4336"] { try model.history.insert(color(value)) }
+        model.searchShown = true; model.filter = .color; await model.waitForSearch()
+        try await shot("color-cards", shelf(), width: 1320)
+        try await shot("color-preview", ClipPreview(clip: colorClip, model: model, close: {}), width: 660, height: 450)
+        model.history = originalHistory; model.clearSearch(); model.searchShown = false; model.resetSelection()
         preferences.appearance = .dark
         try await shot("clipboard-dark", shelf(), dark: true)
         preferences.appearance = .light
@@ -125,9 +148,9 @@ import ClipboardCore
         model.updateQuickPasteModifier([])
         model.stackPasteAvailable = true; model.stackIDs = Array(model.history.clips.prefix(3).map(\.id)); model.startStack(includeSelection: false)
         try await shot("sequential-paste", StackView(model: model, openSettings: {}, finish: {}), width: 360, height: 440)
-        try await shot("settings", SettingsView(model: model, preferences: preferences, changeShortcut: { _, _ in }, recordingChanged: { _ in }, enableCapture: {}), width: 820, height: 740)
+        try await shot("settings", SettingsView(model: model, preferences: preferences, changeShortcut: { _, _ in }, recordingChanged: { _ in }, enableCapture: {}), width: 820, height: 650)
         let keyboardState = SettingsState(); keyboardState.page = .shortcuts
-        try await shot("settings-shortcuts", SettingsView(model: model, preferences: preferences, changeShortcut: { _, _ in }, recordingChanged: { _ in }, enableCapture: {}, state: keyboardState), width: 820, height: 820)
+        try await shot("settings-shortcuts", SettingsView(model: model, preferences: preferences, changeShortcut: { _, _ in }, recordingChanged: { _ in }, enableCapture: {}, state: keyboardState), width: 820, height: 650)
         guard await model.finishPendingStorage() else { throw CocoaError(.fileWriteUnknown) }
         model = nil
     }

@@ -55,6 +55,14 @@ Copy text, links, images, or files, then bring up ClipShelf to find them again. 
 - **Preview with Space** — take a closer look at text, images, or files before pasting. Select Chinese or English text directly inside an image preview and copy it with **⌘C** or the context menu; **⌘A** selects all recognized text. Link previews open the actual webpage in a scrollable, temporary WebKit session, with back/forward navigation and a manual option to open your browser. The page loads only when you open its preview; browser logins are not shared.
 - **Recognize the source** — app icons and colored card footers show where each item came from.
 
+### Color cards and previews
+
+Copy a standalone six-digit HEX color to see a full-color card. Filter by Color to browse saved swatches; press **Space** for a larger preview. Select the HEX value or the single-line `rgb(...)`, `hsl(...)`, and `hsb(...)` code and copy with **⌘C** or the context menu.
+
+![Color cards with light and dark swatches and the Color filter](docs/images/color-cards-en.jpg)
+
+![Color preview with selectable HEX and single-line RGB, HSL, and HSB code](docs/images/color-preview-en.jpg)
+
 ### Chinese, full pinyin, or initials
 
 Find Chinese content without switching input methods: `zhongwen` and `zw` both match 中文. The same matching works for recognized image text.
@@ -101,7 +109,7 @@ Hold the configured modifier alone to reveal numbers and card times. Numbering c
 
 Build a queue, change its order, and paste each item into your destination app. Press the sequential shortcut again to finish.
 
-![Sequential clipboard queue containing sample text and an image](docs/images/sequential-paste-en.jpg)
+![Sequential clipboard queue containing sample text and a color](docs/images/sequential-paste-en.jpg)
 
 ## Make it yours
 
@@ -109,7 +117,7 @@ Choose **English** or **中文**, set your own shortcuts, and decide how long to
 
 The interface combines a frosted-glass shelf, readable cards, and source-app colors. Open and dismiss it with a shortcut whenever you need it.
 
-![Current settings with English selected and history retention set to Forever](docs/images/settings-en.jpg)
+![General settings showing language, appearance, and the card gradient background option](docs/images/settings-en.jpg)
 
 In **Settings → General**, turn on **Card Gradient Background** to tint regular cards by source app. It is off by default; color swatches always keep their actual color.
 
