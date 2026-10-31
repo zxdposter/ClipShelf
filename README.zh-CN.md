@@ -14,9 +14,9 @@
 
 ## 下载
 
-[**下载 Apple 芯片版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.0/ClipShelf-0.13.0-macOS-arm64.dmg) · [**下载 Intel 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.0/ClipShelf-0.13.0-macOS-x86_64.dmg) · [ZIP 下载与更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.13.0)
+[**下载 Apple 芯片版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.1/ClipShelf-0.13.1-macOS-arm64.dmg) · [**下载 Intel 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.1/ClipShelf-0.13.1-macOS-x86_64.dmg) · [ZIP 下载与更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.13.1)
 
-**0.13.0** 需要 **macOS 14 或更新版本**，分别提供 **Apple 芯片和 Intel** 安装包，Homebrew 会自动选择对应架构。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。Intel 交叉编译与签名检查通过，尚未在 Intel 真机测试。
+**0.13.1** 需要 **macOS 14 或更新版本**，分别提供 **Apple 芯片和 Intel** 安装包，Homebrew 会自动选择对应架构。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。Intel 交叉编译与签名检查通过，尚未在 Intel 真机测试。
 
 此版本尚未经过 Apple 公证。如果 macOS 阻止打开，请确认下载来源后，在 **系统设置 → 隐私与安全性 → 仍要打开** 中允许启动。
 
