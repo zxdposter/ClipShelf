@@ -230,8 +230,9 @@ struct ShelfView: View {
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ShelfDesign.accent.opacity(model.searchShown && model.searchFocused ? 0.24 : 0), lineWidth: 0.75))
         .shadow(color: .black.opacity(model.searchShown ? 0.035 : 0), radius: 3, y: 1)
         .animation(searchMotion, value: model.searchShown)
-        .overlay(alignment: .topLeading) {
-            if model.searchShown && !model.suggestedSourceApps.isEmpty {
+        .background {
+            SourceSuggestionPanel(isPresented: model.searchShown && !model.suggestedSourceApps.isEmpty,
+                                  visibleInSharing: model.preferences.showInScreenSharing) {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(model.suggestedSourceApps.enumerated()), id: \.element.id) { index, app in
                         Button { model.selectSourceSuggestion(app) } label: {
@@ -250,7 +251,7 @@ struct ShelfView: View {
                 }.padding(8).frame(width: width)
                     .background(ShelfDesign.paper.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-                    .shadow(color: .black.opacity(0.10), radius: 16, y: 7).offset(y: 40)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         }
