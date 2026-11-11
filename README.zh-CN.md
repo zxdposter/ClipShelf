@@ -38,7 +38,6 @@ brew install --cask zxdposter/tap/clipshelf
 
 如果 Homebrew 提示需要信任，请先运行 `brew trust --cask zxdposter/tap/clipshelf`，再重新执行安装命令。如果之前已手动安装，请退出 ClipShelf，并将原应用移出「应用程序」后再通过 Brew 安装，无需删除剪贴板历史和设置。
 
-安装及更新完成后，如果本机钥匙串已有带私钥的 `ClipShelf Release Signing` 代码签名身份，Homebrew 会使用该本地身份重新签名并验证已安装的应用；后续更新复用同一身份。未找到时保留发布包签名，不创建证书或改用临时签名。更换签名身份可能需要重新授予辅助功能权限；本地签名不等同于 Apple 公证。
 
 ![ClipShelf 剪贴板历史，展示示例笔记、旅行计划和图片](docs/images/clipboard-zh.jpg)
 

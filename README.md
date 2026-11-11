@@ -38,7 +38,6 @@ brew install --cask zxdposter/tap/clipshelf
 
 If Homebrew asks for explicit trust, run `brew trust --cask zxdposter/tap/clipshelf`, then repeat the installation command. If you already installed ClipShelf manually, quit it and move the existing app out of Applications before installing with Brew. Keep your clipboard history and settings in place.
 
-After installation or upgrade, Homebrew re-signs and verifies the installed app using the local `ClipShelf Release Signing` code-signing identity when that identity and its private key exist in your keychain. Updates reuse the same identity. Otherwise, the release signature is retained; no certificate is created and no ad-hoc signature is substituted. Changing the signing identity may require granting Accessibility permission again. Local signing does not provide Apple notarization.
 
 ![ClipShelf clipboard history with sample notes, travel ideas, and artwork](docs/images/clipboard-en.jpg)
 
