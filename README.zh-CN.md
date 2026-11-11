@@ -14,9 +14,9 @@
 
 ## 下载
 
-[**下载 Apple 芯片版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.1/ClipShelf-0.13.1-macOS-arm64.dmg) · [**下载 Intel 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.1/ClipShelf-0.13.1-macOS-x86_64.dmg) · [ZIP 下载与更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.13.1)
+[**下载 Apple 芯片版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.14.0/ClipShelf-0.14.0-macOS-arm64.dmg) · [**下载 Intel 版**](https://github.com/zxdposter/ClipShelf/releases/download/v0.14.0/ClipShelf-0.14.0-macOS-x86_64.dmg) · [ZIP 下载与更新说明](https://github.com/zxdposter/ClipShelf/releases/tag/v0.14.0)
 
-**0.13.1** 需要 **macOS 14 或更新版本**，分别提供 **Apple 芯片和 Intel** 安装包，Homebrew 会自动选择对应架构。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。Intel 交叉编译与签名检查通过，尚未在 Intel 真机测试。
+**0.14.0** 需要 **macOS 14 或更新版本**，分别提供 **Apple 芯片和 Intel** 安装包，Homebrew 会自动选择对应架构。打开 DMG，将 ClipShelf 拖入「应用程序」即可安装。Intel 交叉编译与签名检查通过，尚未在 Intel 真机测试。
 
 此版本尚未经过 Apple 公证。如果 macOS 阻止打开，请确认下载来源后，在 **系统设置 → 隐私与安全性 → 仍要打开** 中允许启动。
 
@@ -37,6 +37,8 @@ brew install --cask zxdposter/tap/clipshelf
 ```
 
 如果 Homebrew 提示需要信任，请先运行 `brew trust --cask zxdposter/tap/clipshelf`，再重新执行安装命令。如果之前已手动安装，请退出 ClipShelf，并将原应用移出「应用程序」后再通过 Brew 安装，无需删除剪贴板历史和设置。
+
+安装及更新完成后，如果本机钥匙串已有带私钥的 `ClipShelf Release Signing` 代码签名身份，Homebrew 会使用该本地身份重新签名并验证已安装的应用；后续更新复用同一身份。未找到时保留发布包签名，不创建证书或改用临时签名。更换签名身份可能需要重新授予辅助功能权限；本地签名不等同于 Apple 公证。
 
 ![ClipShelf 剪贴板历史，展示示例笔记、旅行计划和图片](docs/images/clipboard-zh.jpg)
 
@@ -218,6 +220,7 @@ lipo -archs dist/ClipShelf.app/Contents/MacOS/ClipShelf
 
 - 历史保存在本机，无需云同步。
 - 历史仅按设置的保留时间清理，不限制记录条数、单条大小和总容量；收藏集中的卡片不按时间清理。改动通过后台 SQLite 事务增量保存，迁移时保留原始存档备份。
+- 大块剪贴板原件存放在 `history.plist.data` 中，通过只读文件映射按需访问；卡片使用后台生成的缩略图，缓存成本上限为 32 MiB。PNG、TIFF 等原始粘贴格式完整保留。旧 SQLite 历史首次打开时会事务升级，失败则回滚；升级后的数据库不兼容旧版应用。备份或迁移时请在退出应用后复制整个 `~/Library/Application Support/ClipShelf` 目录，不能只复制 `history.plist`。首次升级需要额外的磁盘空间，原数据库的空闲页不会自动压缩。
 - 随时暂停采集。
 - 忽略不希望保存内容的应用。
 - 跳过带有机密或临时标记的内容。

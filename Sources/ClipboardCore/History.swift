@@ -24,8 +24,42 @@ public func textClipKind(_ text: String) -> ClipKind {
 
 public struct Representation: Codable, Equatable, Sendable {
     public let type: String
-    public let data: Data
-    public init(type: String, data: Data) { self.type = type; self.data = data }
+    private let bytes: RepresentationBytes
+    public var data: Data { bytes.data }
+    public init(type: String, data: Data) { self.type = type; bytes = RepresentationBytes(data) }
+    init(type: String, data: Data, file: URL) { self.type = type; bytes = RepresentationBytes(data, file: file) }
+    var file: URL? { bytes.file }
+    func map(to file: URL) throws { try bytes.map(to: file) }
+    private enum CodingKeys: String, CodingKey { case type, data }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        type = try values.decode(String.self, forKey: .type)
+        bytes = RepresentationBytes(try values.decode(Data.self, forKey: .data))
+    }
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(type, forKey: .type); try values.encode(data, forKey: .data)
+    }
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.type == rhs.type && (lhs.bytes === rhs.bytes || lhs.data == rhs.data)
+    }
+}
+
+// Bytes never change; the writer only replaces their backing with an immutable file mapping.
+private final class RepresentationBytes: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Data
+    private var location: URL?
+    init(_ data: Data, file: URL? = nil) { value = data; location = file }
+    var data: Data { lock.withLock { value } }
+    var file: URL? { lock.withLock { location } }
+    func map(to file: URL) throws {
+        let mapped = try Data(contentsOf: file, options: .alwaysMapped)
+        try lock.withLock {
+            guard mapped.count == value.count else { throw HistoryError.invalidArchive }
+            value = mapped; location = file
+        }
+    }
 }
 
 public func singleImageRepresentation(in items: [[Representation]]) -> Representation? {
@@ -71,6 +105,7 @@ public struct Clip: Codable, Identifiable, Equatable, Sendable {
         let text: String
         let items: [[Representation]]
         init(_ clip: Clip) { text = clip.text; items = clip.items }
+        init(text: String, items: [[Representation]]) { self.text = text; self.items = items }
     }
     init(metadata: Metadata, payload: Payload) {
         id = metadata.id; fingerprint = metadata.fingerprint; kind = metadata.kind; text = payload.text

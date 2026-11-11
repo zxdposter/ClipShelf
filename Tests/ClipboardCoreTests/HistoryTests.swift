@@ -4,6 +4,74 @@ import SQLite3
 @testable import ClipboardCore
 
 struct HistoryTests {
+    @Test func largeRepresentationsStayOutsideDatabaseRecordsAndSurviveUndo() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("history.plist")
+        let bytes = Data(repeating: 7, count: 4 * 1024 * 1024)
+        let original = Clip(kind: .image, text: "image", sourceName: "Test", sourceBundle: "test",
+                            items: [[Representation(type: "public.tiff", data: bytes),
+                                     Representation(type: "public.png", data: Data([1, 2, 3]))]], identity: bytes)
+        var history = History(clips: [original])
+        let database = HistoryDatabase(url: url)
+        try database.save(history)
+        #expect(original.items[0][0].file != nil)
+        var audit: OpaquePointer?
+        #expect(sqlite3_open_v2(url.path, &audit, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
+        defer { sqlite3_close(audit) }
+        var query: OpaquePointer?
+        #expect(sqlite3_prepare_v2(audit, "SELECT length(record) FROM payloads", -1, &query, nil) == SQLITE_OK)
+        #expect(sqlite3_step(query) == SQLITE_ROW)
+        #expect(sqlite3_column_int(query, 0) < 256 * 1024)
+        sqlite3_finalize(query)
+        history = try History.load(from: url)
+        #expect(history.clips == [original])
+        let deletion = history.deletion(for: [original.id])
+        history.remove(id: original.id)
+        try database.save(history)
+        try history.restore(deletion)
+        try database.save(history)
+        #expect(try History.load(from: url).clips == [original])
+    }
+
+    @Test func versionOnePayloadsMigrateWithoutChangingAnyClipboardFormat() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("history.plist")
+        let bytes = Data(repeating: 5, count: 2 * 1024 * 1024)
+        let original = Clip(kind: .image, text: "image", sourceName: "Test", sourceBundle: "test",
+                            items: [[Representation(type: "public.tiff", data: bytes),
+                                     Representation(type: "public.png", data: Data([1, 2, 3]))]], identity: bytes)
+        try History(clips: [original]).save(to: url)
+        var connection: OpaquePointer?
+        #expect(sqlite3_open(url.path, &connection) == SQLITE_OK)
+        defer { sqlite3_close(connection) }
+        let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
+        let legacy = try encoder.encode(Clip.Payload(original))
+        var query: OpaquePointer?
+        #expect(sqlite3_prepare_v2(connection, "UPDATE payloads SET record = ?", -1, &query, nil) == SQLITE_OK)
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        let result = legacy.withUnsafeBytes { sqlite3_bind_blob(query, 1, $0.baseAddress, Int32($0.count), transient) }
+        #expect(result == SQLITE_OK && sqlite3_step(query) == SQLITE_DONE)
+        sqlite3_finalize(query)
+        #expect(sqlite3_exec(connection, "PRAGMA user_version=1", nil, nil, nil) == SQLITE_OK)
+        #expect(sqlite3_exec(connection, "CREATE TRIGGER reject_migration BEFORE UPDATE ON payloads BEGIN SELECT RAISE(ABORT, 'test migration failure'); END", nil, nil, nil) == SQLITE_OK)
+        #expect(throws: (any Error).self) { try History.load(from: url) }
+        #expect(sqlite3_prepare_v2(connection, "PRAGMA user_version", -1, &query, nil) == SQLITE_OK)
+        #expect(sqlite3_step(query) == SQLITE_ROW && sqlite3_column_int(query, 0) == 1)
+        sqlite3_finalize(query)
+        #expect(sqlite3_exec(connection, "DROP TRIGGER reject_migration", nil, nil, nil) == SQLITE_OK)
+        let loaded = try History.load(from: url)
+        #expect(loaded.clips == [original])
+        let mapped = try #require(loaded.clips.first?.items.first?.first?.file)
+        #expect(mapped.deletingLastPathComponent().path == url.appendingPathExtension("data").path)
+        #expect((try FileManager.default.attributesOfItem(atPath: mapped.path)[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        try FileManager.default.removeItem(at: mapped)
+        #expect(throws: (any Error).self) { try History.load(from: url) }
+        // An already-open mapping still owns its bytes, including after deletion or a failed reload.
+        #expect(loaded.clips[0].items[0][0].data == bytes)
+    }
+
     private func clip(_ text: String, source: String = "备忘录", kind: ClipKind = .text, date: Date = Date()) -> Clip {
         Clip(kind: kind, text: text, sourceName: source, sourceBundle: "test.app",
              items: [[Representation(type: "public.utf8-plain-text", data: Data(text.utf8))]],
@@ -51,8 +119,9 @@ struct HistoryTests {
         try history.insert(item)
         #expect(history.clips.first == item)
         #expect(Array(history.clips.dropFirst()) == original)
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: url) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let url = directory.appendingPathComponent("history.plist")
+        defer { try? FileManager.default.removeItem(at: directory) }
         try history.save(to: url)
         #expect(try History.load(from: url).clips == history.clips)
         let text = String(repeating: "x", count: 6 * 1024 * 1024)
@@ -171,8 +240,9 @@ struct HistoryTests {
         #expect(history.clips.last?.text == "text 0")
         let board = try #require(history.boards.first?.id)
         for item in history.clips { history.addToBoard(clipID: item.id, boardID: board) }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: url) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let url = directory.appendingPathComponent("history.plist")
+        defer { try? FileManager.default.removeItem(at: directory) }
         try history.save(to: url)
         let loaded = try History.load(from: url)
         #expect(loaded.clips == history.clips && loaded.boards == history.boards)

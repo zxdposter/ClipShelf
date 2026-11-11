@@ -5,6 +5,24 @@ import Testing
 @testable import ClipboardCore
 
 struct FileThumbnailTests {
+    @Test @MainActor func imageCardsDecodeBoundedThumbnailsAndReuseTheCache() async throws {
+        let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2400, pixelsHigh: 1200,
+                                                   bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                                   isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        memset(bitmap.bitmapData, 255, bitmap.bytesPerRow * bitmap.pixelsHigh)
+        let png = try #require(bitmap.representation(using: .png, properties: [:]))
+        let clip = Clip(kind: .image, text: "image", sourceName: "Test", sourceBundle: "test",
+                        items: [[Representation(type: "public.png", data: png)]], identity: png)
+        let cache = ImageThumbnailCache()
+        let image = try #require(await cache.image(for: clip))
+        let thumbnail = try #require(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        #expect(thumbnail.width == 512 && thumbnail.height == 256)
+        #expect(await cache.image(for: clip) === image)
+        let invalid = Clip(kind: .image, text: "bad", sourceName: "Test", sourceBundle: "test",
+                           items: [[Representation(type: "public.png", data: Data([1, 2, 3]))]], identity: Data([1, 2, 3]))
+        #expect(await cache.image(for: invalid) == nil)
+    }
+
     @Test @MainActor func oversizedThumbnailsStayInsideTheFileCard() async throws {
         let model = ClipboardModel(demo: true, preferences: isolatedPreferences())
         let clip = Clip(kind: .files, text: "example-file-with-a-long-name.session", sourceName: "Test", sourceBundle: "test", items: [], identity: Data("file".utf8))

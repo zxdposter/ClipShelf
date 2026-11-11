@@ -556,9 +556,6 @@ private struct ClipCardContent: View, Equatable {
     let linkPreviews: Bool
     let refreshID: UUID
     let imageHighlights: [CGRect]
-    private var image: NSImage? {
-        clip.items.flatMap { $0 }.first(where: { $0.type == "public.png" || $0.type == "public.tiff" }).flatMap { NSImage(data: $0.data) }
-    }
     var body: some View {
         if clip.kind == .color, let value = hexColorValue(clip.text) {
             let color = ClipColor(value: value)
@@ -573,8 +570,8 @@ private struct ClipCardContent: View, Equatable {
                     .frame(maxWidth: .infinity, maxHeight: .infinity).clipped().allowsHitTesting(false)
                 Text(clip.text).font(.system(size: 10.5)).lineLimit(2).foregroundStyle(.secondary)
             }
-        } else if let image {
-            HighlightedClipImage(image: image, highlights: imageHighlights)
+        } else if clip.kind == .image {
+            ClipImageThumbnail(clip: clip, highlights: imageHighlights)
                 .background(ShelfDesign.canvas, in: RoundedRectangle(cornerRadius: 8))
         } else {
             Text(cardClipText(clip)).font(.system(size: 13)).lineSpacing(3.5).multilineTextAlignment(.leading)

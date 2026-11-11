@@ -34,10 +34,8 @@ struct StackView: View {
                             HStack(alignment: .top, spacing: 10) {
                                 Text("\(index + 1)").monospacedDigit().foregroundStyle(.secondary)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    if clip.kind == .image,
-                                       let data = clip.items.flatMap({ $0 }).first(where: { $0.type == "public.png" || $0.type == "public.tiff" })?.data,
-                                       let image = NSImage(data: data) {
-                                        Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 90)
+                                    if clip.kind == .image {
+                                        ClipImageThumbnail(clip: clip).frame(height: 90)
                                     } else {
                                         Text(cardClipText(clip)).lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
                                     }

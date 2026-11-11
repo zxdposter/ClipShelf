@@ -2,9 +2,30 @@ import Foundation
 import Testing
 import AppKit
 @testable import ClipShelf
-import ClipboardCore
+@testable import ClipboardCore
 
 struct ClipboardIntegrationTests {
+    @Test @MainActor func capturedLargeImagesReleaseHeapBackingAndPasteAllOriginalFormats() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let board = NSPasteboard(name: .init("ClipShelf-memory-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        let service = ImageTextService(cacheURL: directory.appendingPathComponent("ocr.sqlite"), recognize: { _ in "image" })
+        let model = ClipboardModel(pasteboard: board, storageURL: directory.appendingPathComponent("history.plist"),
+                                   preferences: isolatedPreferences(), imageTextService: service)
+        let tiff = Data(repeating: 9, count: 2 * 1024 * 1024)
+        let png = Data([1, 2, 3])
+        let item = NSPasteboardItem(); item.setData(tiff, forType: .tiff); item.setData(png, forType: .png)
+        board.clearContents(); #expect(board.writeObjects([item]))
+        await model.capture(expectedChange: board.changeCount, source: nil)
+        #expect(await model.finishPendingStorage())
+        let captured = try #require(model.history.clips.first)
+        #expect(captured.items.flatMap { $0 }.first { $0.type == "public.tiff" }?.file != nil)
+        #expect(model.copy(captured))
+        #expect(board.data(forType: .tiff) == tiff && board.data(forType: .png) == png)
+        #expect(await model.finishPendingStorage())
+    }
+
     @Test @MainActor
     func colorCaptureKeepsOriginalClipboardText() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

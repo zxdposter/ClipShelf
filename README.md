@@ -14,9 +14,9 @@ A clipboard manager for Mac, with searchable history, collections, and a card-ba
 
 ## Download
 
-[**Download for Apple silicon**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.1/ClipShelf-0.13.1-macOS-arm64.dmg) · [**Download for Intel**](https://github.com/zxdposter/ClipShelf/releases/download/v0.13.1/ClipShelf-0.13.1-macOS-x86_64.dmg) · [ZIP downloads and release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.13.1)
+[**Download for Apple silicon**](https://github.com/zxdposter/ClipShelf/releases/download/v0.14.0/ClipShelf-0.14.0-macOS-arm64.dmg) · [**Download for Intel**](https://github.com/zxdposter/ClipShelf/releases/download/v0.14.0/ClipShelf-0.14.0-macOS-x86_64.dmg) · [ZIP downloads and release notes](https://github.com/zxdposter/ClipShelf/releases/tag/v0.14.0)
 
-**0.13.1** requires **macOS 14 or later** and supports **Apple silicon and Intel** Macs with separate downloads. Homebrew automatically chooses the matching architecture. Open the DMG and drag ClipShelf into Applications. Intel cross-compilation and signature checks pass; Intel hardware testing is still pending.
+**0.14.0** requires **macOS 14 or later** and supports **Apple silicon and Intel** Macs with separate downloads. Homebrew automatically chooses the matching architecture. Open the DMG and drag ClipShelf into Applications. Intel cross-compilation and signature checks pass; Intel hardware testing is still pending.
 
 This release has not been notarized by Apple. If macOS blocks opening it, review the download and allow it in **System Settings → Privacy & Security → Open Anyway**.
 
@@ -37,6 +37,8 @@ brew install --cask zxdposter/tap/clipshelf
 ```
 
 If Homebrew asks for explicit trust, run `brew trust --cask zxdposter/tap/clipshelf`, then repeat the installation command. If you already installed ClipShelf manually, quit it and move the existing app out of Applications before installing with Brew. Keep your clipboard history and settings in place.
+
+After installation or upgrade, Homebrew re-signs and verifies the installed app using the local `ClipShelf Release Signing` code-signing identity when that identity and its private key exist in your keychain. Updates reuse the same identity. Otherwise, the release signature is retained; no certificate is created and no ad-hoc signature is substituted. Changing the signing identity may require granting Accessibility permission again. Local signing does not provide Apple notarization.
 
 ![ClipShelf clipboard history with sample notes, travel ideas, and artwork](docs/images/clipboard-en.jpg)
 
@@ -218,6 +220,7 @@ The script builds both `arm64` and `x86_64`, combines them into one Universal ap
 
 - Keep your clipboard history on your Mac, without cloud sync.
 - History expires only by your chosen retention period, with no item count, individual size, or total size limit; cards in collections do not expire. Changes are saved incrementally in background SQLite transactions, and the original archive is backed up during migration.
+- Large clipboard originals live in `history.plist.data` and use read-only file mappings for on-demand access. Cards use background thumbnails with a 32 MiB cache cost limit; original PNG, TIFF, and other pasteboard formats are preserved. Existing SQLite history upgrades transactionally on first open and rolls back on failure; older app versions cannot read the upgraded database. Quit the app and copy the entire `~/Library/Application Support/ClipShelf` directory when backing up or moving history, rather than copying `history.plist` alone. The first upgrade needs additional disk space, and free pages in the original database are not automatically compacted.
 - Pause collection whenever you want.
 - Exclude apps you do not want to save content from.
 - Skip marked confidential or temporary content.

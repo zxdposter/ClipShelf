@@ -9,6 +9,7 @@ final class HistoryDatabase {
         let boards: [Pinboard]
     }
     private let url: URL
+    private var payloadDirectory: URL { url.appendingPathExtension("data") }
     private var db: OpaquePointer?
     private var previous: History?
     private let encoder: PropertyListEncoder = {
@@ -26,7 +27,8 @@ final class HistoryDatabase {
     }
     static func read(from url: URL) throws -> History {
         let store = HistoryDatabase(url: url)
-        try store.open(url, flags: SQLITE_OPEN_READONLY)
+        try store.open(url, flags: SQLITE_OPEN_READWRITE)
+        try store.upgradePayloads()
         return try store.read()
     }
     private func open(_ url: URL, flags: Int32) throws {
@@ -60,12 +62,73 @@ final class HistoryDatabase {
         guard let bytes = sqlite3_column_blob(statement, index) else { throw HistoryError.invalidArchive }
         return Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, index)))
     }
+    private func version() throws -> Int32 {
+        let query = try statement("PRAGMA user_version")
+        defer { sqlite3_finalize(query) }
+        guard sqlite3_step(query) == SQLITE_ROW else { throw failure() }
+        return sqlite3_column_int(query, 0)
+    }
+    private func syncPayloadDirectory() throws {
+        guard FileManager.default.fileExists(atPath: payloadDirectory.path) else { return }
+        for directory in [payloadDirectory, url.deletingLastPathComponent()] {
+            let descriptor = Darwin.open(directory.path, O_RDONLY)
+            guard descriptor >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+            defer { Darwin.close(descriptor) }
+            guard fsync(descriptor) == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+        }
+    }
+    private func encodedPayload(_ payload: Clip.Payload) throws -> Data {
+        try encoder.encode(StoredPayload(payload, directory: payloadDirectory))
+    }
+    private func withPayloadAccess<T>(exclusive: Bool, _ operation: () throws -> T) throws -> T {
+        try FileManager.default.createDirectory(at: payloadDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let descriptor = Darwin.open(payloadDirectory.path, O_RDONLY)
+        guard descriptor >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+        defer { Darwin.close(descriptor) }
+        guard flock(descriptor, exclusive ? LOCK_EX : LOCK_SH) == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+        defer { flock(descriptor, LOCK_UN) }
+        return try operation()
+    }
+    private func upgradePayloads() throws {
+        guard try version() == 1 else { return }
+        try withPayloadAccess(exclusive: true) { try upgradeLockedPayloads() }
+        sqlite3_db_release_memory(db)
+    }
+    private func upgradeLockedPayloads() throws {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            try execute("PRAGMA secure_delete=ON")
+            // Another process may have upgraded while this connection waited for the lock.
+            if try version() == 1 {
+                let rows = try statement("SELECT id, record FROM payloads ORDER BY id")
+                defer { sqlite3_finalize(rows) }
+                let update = try statement("UPDATE payloads SET record = ? WHERE id = ?")
+                defer { sqlite3_finalize(update) }
+                while true {
+                    let result = sqlite3_step(rows)
+                    if result == SQLITE_DONE { break }
+                    guard result == SQLITE_ROW, let raw = sqlite3_column_text(rows, 0),
+                          let id = UUID(uuidString: String(cString: raw)) else { throw HistoryError.invalidArchive }
+                    try autoreleasepool {
+                        let payload = try PropertyListDecoder().decode(Clip.Payload.self, from: data(rows, at: 1))
+                        sqlite3_reset(update); sqlite3_clear_bindings(update)
+                        try bind(encodedPayload(payload), to: update, at: 1)
+                        try bind(id, to: update, at: 2); try done(update)
+                    }
+                }
+                try syncPayloadDirectory()
+                try execute("PRAGMA user_version=2")
+            }
+            try execute("COMMIT")
+        } catch { try? execute("ROLLBACK"); throw error }
+    }
     private func read() throws -> History {
+        try withPayloadAccess(exclusive: false) { try readContents() }
+    }
+    private func readContents() throws -> History {
         try execute("BEGIN")
         defer { try? execute("ROLLBACK") }
-        let version = try statement("PRAGMA user_version")
-        defer { sqlite3_finalize(version) }
-        guard sqlite3_step(version) == SQLITE_ROW, sqlite3_column_int(version, 0) == 1 else { throw HistoryError.invalidArchive }
+        guard try version() == 2 else { throw HistoryError.invalidArchive }
         let state = try statement("SELECT record FROM state WHERE id = 1")
         defer { sqlite3_finalize(state) }
         guard sqlite3_step(state) == SQLITE_ROW else { throw HistoryError.invalidArchive }
@@ -79,7 +142,7 @@ final class HistoryDatabase {
             if result == SQLITE_DONE { break }
             guard result == SQLITE_ROW, let id = sqlite3_column_text(rows, 0) else { throw failure() }
             let metadata = try decoder.decode(Clip.Metadata.self, from: data(rows, at: 1))
-            let payload = try decoder.decode(Clip.Payload.self, from: data(rows, at: 2))
+            let payload = try decoder.decode(StoredPayload.self, from: data(rows, at: 2)).payload(in: payloadDirectory)
             let clip = Clip(metadata: metadata, payload: payload)
             guard clip.id.uuidString == String(cString: id), clips[clip.id] == nil else { throw HistoryError.invalidArchive }
             clips[clip.id] = clip
@@ -94,6 +157,7 @@ final class HistoryDatabase {
             do {
                 if FileManager.default.fileExists(atPath: url.path), try Self.isDatabase(at: url) {
                     try open(url, flags: SQLITE_OPEN_READWRITE)
+                    try upgradePayloads()
                     previous = try read()
                 } else {
                     // Validate first; a corrupt legacy file must never be replaced by an empty store.
@@ -119,7 +183,7 @@ final class HistoryDatabase {
         guard manager.createFile(atPath: temporary.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw HistoryError.invalidArchive }
         do {
             try open(temporary, flags: SQLITE_OPEN_READWRITE)
-            try execute("CREATE TABLE clips (id TEXT PRIMARY KEY NOT NULL, metadata BLOB NOT NULL); CREATE TABLE payloads (id TEXT PRIMARY KEY NOT NULL REFERENCES clips(id) ON DELETE CASCADE, record BLOB NOT NULL); CREATE TABLE state (id INTEGER PRIMARY KEY CHECK(id = 1), record BLOB NOT NULL); PRAGMA user_version=1")
+            try execute("CREATE TABLE clips (id TEXT PRIMARY KEY NOT NULL, metadata BLOB NOT NULL); CREATE TABLE payloads (id TEXT PRIMARY KEY NOT NULL REFERENCES clips(id) ON DELETE CASCADE, record BLOB NOT NULL); CREATE TABLE state (id INTEGER PRIMARY KEY CHECK(id = 1), record BLOB NOT NULL); PRAGMA user_version=2")
             try write(history)
             guard sqlite3_close(db) == SQLITE_OK else { throw failure() }
             db = nil
@@ -164,7 +228,7 @@ final class HistoryDatabase {
                     }
                     if prior.text != clip.text || prior.items != clip.items {
                         sqlite3_reset(payload); sqlite3_clear_bindings(payload)
-                        try bind(encoder.encode(Clip.Payload(clip)), to: payload, at: 1)
+                        try bind(encodedPayload(Clip.Payload(clip)), to: payload, at: 1)
                         try bind(clip.id, to: payload, at: 2); try done(payload)
                     }
                 } else {
@@ -173,7 +237,7 @@ final class HistoryDatabase {
                     try bind(encoder.encode(Clip.Metadata(clip)), to: insert, at: 2); try done(insert)
                     sqlite3_reset(insertPayload); sqlite3_clear_bindings(insertPayload)
                     try bind(clip.id, to: insertPayload, at: 1)
-                    try bind(encoder.encode(Clip.Payload(clip)), to: insertPayload, at: 2); try done(insertPayload)
+                    try bind(encodedPayload(Clip.Payload(clip)), to: insertPayload, at: 2); try done(insertPayload)
                 }
             }
             let order = history.clips.map(\.id)
@@ -182,11 +246,31 @@ final class HistoryDatabase {
                 defer { sqlite3_finalize(state) }
                 try bind(encoder.encode(Manifest(order: order, boards: history.boards)), to: state, at: 1); try done(state)
             }
+            try syncPayloadDirectory()
             try execute("COMMIT")
             previous = history
         } catch {
             try? execute("ROLLBACK")
             throw error
+        }
+        // Mappings keep deleted bytes alive for undo; unlink only files absent from committed records.
+        try? withPayloadAccess(exclusive: true) {
+            try execute("BEGIN IMMEDIATE")
+            defer { try? execute("ROLLBACK") }
+            let rows = try statement("SELECT record FROM payloads")
+            defer { sqlite3_finalize(rows) }
+            var retained = Set<String>()
+            while true {
+                let result = sqlite3_step(rows)
+                if result == SQLITE_DONE { break }
+                guard result == SQLITE_ROW else { throw failure() }
+                let record = try PropertyListDecoder().decode(StoredPayload.self, from: data(rows, at: 0))
+                retained.formUnion(record.files)
+            }
+            for name in try FileManager.default.contentsOfDirectory(atPath: payloadDirectory.path)
+                where UUID(uuidString: name)?.uuidString == name && !retained.contains(name) {
+                try FileManager.default.removeItem(at: payloadDirectory.appendingPathComponent(name))
+            }
         }
     }
 }
