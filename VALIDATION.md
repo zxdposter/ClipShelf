@@ -192,3 +192,9 @@ Command 提示显示状态已通过按下/松开和自定义修饰键的模型�
 - 本机 Command Line Tools 需要显式加载已有 Testing 插件：`swift test -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing --no-parallel`。arm64 Release 构建及签名验证通过，应用包位于 `.build/memory-release/ClipShelf.app`。
 
 尚未替换或重启 `/Applications/ClipShelf.app`，未进行新包的跨应用粘贴、长期滚动和长期运行实机验收。首次升级需要额外磁盘空间，原数据库的空闲页不会自动压缩；升级后的历史不兼容旧版程序。切换前应退出旧实例，备份和迁移需包含整个 ClipShelf 数据目录及 `history.plist.data`，不能只复制数据库。
+
+### 0.14.0 发布与本机安装（2026-11-11）
+
+双架构 DMG/ZIP 已发布，四个远端资产的 SHA-256 均与本地产物一致。本机通过 Homebrew 更新至 0.14.0，更新前已完整备份历史和旧应用并校验文件。按用户最终要求，已撤回安装后本地重签回调，恢复直接保留固定发布证书签名，并通过 brew 重装；安装后的可执行文件和 CodeResources 与原发布包逐字节校验一致，`codesign --verify --deep --strict` 通过。
+
+启动验收未通过：LaunchServices 返回 -128，Gatekeeper 拒绝执行；`syspolicy_check distribution` 报告缺少公证票据及 Internal Xprotect Error。不能将签名校验通过视为已解除系统安全拦截，也未据此删除隔离标记或关闭系统保护。当前 1,652 条历史仍为 SQLite v1，尚未发生实际迁移；新版本的启动、授权保留和完整应用内存尚未验收。
