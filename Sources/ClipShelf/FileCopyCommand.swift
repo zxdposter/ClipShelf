@@ -36,6 +36,10 @@ enum FileCopyCommand {
         guard pasteboard.writeObjects(items) else {
             throw CommandError("Could not write files to the clipboard.")
         }
+        // Synchronize with the pasteboard server before this short-lived command exits.
+        guard pasteboard.types?.contains(.fileURL) == true else {
+            throw CommandError("Could not retain files on the clipboard.")
+        }
     }
 
     static func copyText(_ arguments: [String], to pasteboard: NSPasteboard) throws {
